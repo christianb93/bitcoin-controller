@@ -14,3 +14,19 @@ go run $GOPATH/src/k8s.io/code-generator/cmd/client-gen/main.go \
   --input "bitcoincontroller/v1" \
   --output-package "github.com/christianb93/bitcoin-controller/internal/generated/clientset" \
   --clientset-name "versioned"
+
+#
+# Generate lister
+#
+go run $GOPATH/src/k8s.io/code-generator/cmd/lister-gen/main.go \
+  --input-dirs  "github.com/christianb93/bitcoin-controller/internal/apis/bitcoincontroller/v1"\
+  --output-package "github.com/christianb93/bitcoin-controller/internal/generated/listers"
+
+#
+# Generate informer
+#
+go run $GOPATH/src/k8s.io/code-generator/cmd/informer-gen/main.go \
+  --input-dirs  "github.com/christianb93/bitcoin-controller/internal/apis/bitcoincontroller/v1"\
+  --versioned-clientset-package "github.com/christianb93/bitcoin-controller/internal/generated/clientset/versioned"\
+  --listers-package "github.com/christianb93/bitcoin-controller/internal/generated/listers"\
+  --output-package "github.com/christianb93/bitcoin-controller/internal/generated/informers"

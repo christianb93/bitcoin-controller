@@ -6,8 +6,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	controller "github.com/christianb93/bitcoin-controller/internal/controller"
 	clientset "github.com/christianb93/bitcoin-controller/internal/generated/clientset/versioned"
+	bcinformers "github.com/christianb93/bitcoin-controller/internal/generated/informers/externalversions"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
@@ -54,11 +57,24 @@ func main() {
 		os.Exit(1)
 	}
 	// Create BitcoinNetwork client set
-	_, err = clientset.NewForConfig(config)
+	bcClient, err := clientset.NewForConfig(config)
 	if err != nil {
 		klog.Error("Could not create BitcoinNetwork clientset")
 		os.Exit(1)
 	}
-	klog.Info("Entering main loop")
+	klog.Info("Creating shared informer")
+	// Create an informer factory for BitcoinNetwork objects
+	bcInformerFactory := bcinformers.NewSharedInformerFactory(bcClient, time.Second*30)
+	if bcInformerFactory == nil {
+		panic("Could not create BitcoinNetwork informer\n")
+	}
+	klog.Info("Created all required client sets and informers, now creating controller")
+	controller := controller.NewController(bcInformerFactory.Bitcoincontroller().V1().BitcoinNetworks())
+	if controller == nil {
+		panic("Could not create controller")
+	}
+	klog.Info("Done, now starting informer and controller")
+	bcInformerFactory.Start(stopCh)
+	controller.Run(stopCh, 5)
 	<-stopCh
 }

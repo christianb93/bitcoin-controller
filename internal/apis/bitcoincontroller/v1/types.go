@@ -17,14 +17,18 @@ type BitcoinNetwork struct {
 	Status BitcoinNetworkStatus `json:"status"`
 }
 
+// +k8s:deepcopy-gen=true
+
 // BitcoinNetworkSpec is the to-be state of a bitcoin network
 type BitcoinNetworkSpec struct {
-	Nodes int `json:",nodes"`
+	Nodes int `json:"nodes"`
 }
+
+// +k8s:deepcopy-gen=true
 
 // BitcoinNetworkStatus is the as-is state of a bitcoin network
 type BitcoinNetworkStatus struct {
-	Nodes int `json:",nodes"`
+	Nodes int `json:"nodes"`
 }
 
 // +k8s:deepcopy-gen=true
