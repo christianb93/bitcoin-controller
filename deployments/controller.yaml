@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bitcoin-controller
+  namespace: default
+spec:
+  containers:
+  - name: bitcoin-controller-ctr
+    image: christianb93/bitcoin-controller:latest
