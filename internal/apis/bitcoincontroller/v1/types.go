@@ -6,6 +6,7 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen=true
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // BitcoinNetwork specifies a bitcoin test network
 type BitcoinNetwork struct {
@@ -27,6 +28,7 @@ type BitcoinNetworkStatus struct {
 }
 
 // +k8s:deepcopy-gen=true
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // BitcoinNetworkList is a list of bitcoin networks
 type BitcoinNetworkList struct {
