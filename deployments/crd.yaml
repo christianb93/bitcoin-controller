@@ -1,10 +1,10 @@
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
-    name: bitcoin-networks.bitcoin-controller.christianb93.github.com
+    name: bitcoin-networks.bitcoincontroller.christianb93.github.com
 spec:
     version: v1
-    group: bitcoin-controller.christianb93.github.com
+    group: bitcoincontroller.christianb93.github.com
     scope: Namespaced
     subresources:
       status: {}
