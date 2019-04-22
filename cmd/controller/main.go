@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	clientset "github.com/christianb93/bitcoin-controller/internal/generated/clientset/versioned"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
@@ -49,7 +50,13 @@ func main() {
 	// Create clientset from config
 	_, err = kubernetes.NewForConfig(config)
 	if err != nil {
-		klog.Error("Could not create clientset")
+		klog.Error("Could not create K8s clientset")
+		os.Exit(1)
+	}
+	// Create BitcoinNetwork client set
+	_, err = clientset.NewForConfig(config)
+	if err != nil {
+		klog.Error("Could not create BitcoinNetwork clientset")
 		os.Exit(1)
 	}
 	klog.Info("Entering main loop")

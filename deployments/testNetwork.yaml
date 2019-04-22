@@ -1,0 +1,6 @@
+apiVersion: bitcoincontroller.christianb93.github.com/v1
+kind: BitcoinNetwork
+metadata:
+  name: my-network
+spec:
+  nodes: 2

@@ -1,7 +1,7 @@
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
-    name: bitcoin-networks.bitcoincontroller.christianb93.github.com
+    name: bitcoinnetworks.bitcoincontroller.christianb93.github.com
 spec:
     version: v1
     group: bitcoincontroller.christianb93.github.com
@@ -9,8 +9,8 @@ spec:
     subresources:
       status: {}
     names:
-      plural: bitcoin-networks
-      singular: bitcoin-network
+      plural: bitcoinnetworks
+      singular: bitcoinnetwork
       kind: BitcoinNetwork
     validation:
       openAPIV3Schema:
@@ -20,4 +20,4 @@ spec:
             - nodes
             properties:
               nodes:
-                type: int
+                type: integer
