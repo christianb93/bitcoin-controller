@@ -2,8 +2,10 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: bitcoin-controller
-  namespace: default
+  namespace: bitcoin-controller
 spec:
+  serviceAccountName: bitcoin-controller-sva
   containers:
   - name: bitcoin-controller-ctr
     image: christianb93/bitcoin-controller:latest
+    imagePullPolicy: IfNotPresent

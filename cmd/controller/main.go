@@ -11,6 +11,7 @@ import (
 	controller "github.com/christianb93/bitcoin-controller/internal/controller"
 	clientset "github.com/christianb93/bitcoin-controller/internal/generated/clientset/versioned"
 	bcinformers "github.com/christianb93/bitcoin-controller/internal/generated/informers/externalversions"
+	informers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
@@ -51,7 +52,7 @@ func main() {
 		os.Exit(1)
 	}
 	// Create clientset from config
-	_, err = kubernetes.NewForConfig(config)
+	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		klog.Error("Could not create K8s clientset")
 		os.Exit(1)
@@ -66,15 +67,26 @@ func main() {
 	// Create an informer factory for BitcoinNetwork objects
 	bcInformerFactory := bcinformers.NewSharedInformerFactory(bcClient, time.Second*30)
 	if bcInformerFactory == nil {
-		panic("Could not create BitcoinNetwork informer\n")
+		panic("Could not create BitcoinNetwork informer factory\n")
 	}
-	klog.Info("Created all required client sets and informers, now creating controller")
-	controller := controller.NewController(bcInformerFactory.Bitcoincontroller().V1().BitcoinNetworks())
+	// Create an informer factory for stateful sets
+	informerFactory := informers.NewSharedInformerFactory(client, time.Second*30)
+	if informerFactory == nil {
+		panic("Could not create informer factory\n")
+	}
+	klog.Info("Created all required client sets and informer factories, now creating controller")
+	controller := controller.NewController(
+		bcInformerFactory.Bitcoincontroller().V1().BitcoinNetworks(),
+		informerFactory.Apps().V1().StatefulSets(),
+		informerFactory.Core().V1().Services(),
+		client,
+	)
 	if controller == nil {
 		panic("Could not create controller")
 	}
 	klog.Info("Done, now starting informer and controller")
 	bcInformerFactory.Start(stopCh)
+	informerFactory.Start(stopCh)
 	controller.Run(stopCh, 5)
 	<-stopCh
 }
