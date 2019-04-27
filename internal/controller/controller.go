@@ -49,16 +49,15 @@ func (c *Controller) AddBitcoinNetwork(obj interface{}) {
 	c.enqueue(obj)
 }
 
-// DeleteBitcoinNetwork is the event handler for ADD
-func (c *Controller) DeleteBitcoinNetwork(obj interface{}) {
-	klog.Infof("DELETE handler called\n")
-	c.enqueue(obj)
-}
-
 // UpdateBitcoinNetwork is the event handler for MOD
 func (c *Controller) UpdateBitcoinNetwork(old interface{}, new interface{}) {
 	klog.Infof("UPDATE handler called\n")
 	c.enqueue(new)
+}
+
+// UpdateObject is a generic update handler for all other objects
+func (c *Controller) UpdateObject(old interface{}, new interface{}) {
+	c.handleObject(new)
 }
 
 // NewController creates a new bitcoin controller
@@ -79,10 +78,14 @@ func NewController(bitcoinNetworkInformer bcInformers.BitcoinNetworkInformer,
 	// Set up event handler
 	bitcoinNetworkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.AddBitcoinNetwork,
-		DeleteFunc: controller.DeleteBitcoinNetwork,
 		UpdateFunc: controller.UpdateBitcoinNetwork,
 	})
-
+	stsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: controller.UpdateObject,
+	})
+	svcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: controller.UpdateObject,
+	})
 	return controller
 }
 
@@ -95,6 +98,30 @@ func (c *Controller) enqueue(obj interface{}) {
 		return
 	}
 	c.workqueue.Add(key)
+}
+
+// This function is invoked when a dependent object (stateful set, service) changes.
+// It will simply determine the owning network and enqueue this network
+func (c *Controller) handleObject(obj interface{}) {
+	var object metav1.Object
+	var ok bool
+	if object, ok = obj.(metav1.Object); !ok {
+		klog.Error("Could not convert object, giving up")
+	}
+	klog.Infof("Processing object: %s", object.GetName())
+	if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
+		if ownerRef.Kind != "BitcoinNetwork" {
+			return
+		}
+		bcNetwork, err := c.bcLister.BitcoinNetworks(object.GetNamespace()).Get(ownerRef.Name)
+		if err != nil {
+			klog.Infof("ignoring orphaned object '%s' of bitcoin network '%s'", object.GetSelfLink(), ownerRef.Name)
+			return
+		}
+		klog.Infof("Queuing owning object %s\n", bcNetwork.Name)
+		c.enqueue(bcNetwork)
+		return
+	}
 }
 
 // Run starts the controller main loop and all workers
@@ -119,7 +146,6 @@ func (c *Controller) Run(stopChan <-chan struct{}, threads int) error {
 func (c *Controller) updateStatefulSet(sts *appsv1.StatefulSet, replicaCount int32) {
 	// Create a deep clone first
 	stsCopy := sts.DeepCopy()
-	klog.Infof("Created deep copy of stateful set %s\n", stsCopy.Name)
 	stsCopy.Spec.Replicas = &replicaCount
 	_, err := c.clientset.AppsV1().StatefulSets(stsCopy.Namespace).Update(stsCopy)
 	if err != nil {
@@ -140,6 +166,9 @@ func (c *Controller) createStatefulSet(bcNetwork *bcv1.BitcoinNetwork, stsName s
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      stsName,
 			Namespace: bcNetwork.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(bcNetwork, bcv1.SchemeGroupVersion.WithKind("BitcoinNetwork")),
+			},
 		},
 		Spec: appsv1.StatefulSetSpec{
 			Replicas:    &bcNetwork.Spec.Nodes,
@@ -190,6 +219,9 @@ func (c *Controller) createHeadlessService(bcNetwork *bcv1.BitcoinNetwork, svcNa
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      svcName,
 			Namespace: bcNetwork.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(bcNetwork, bcv1.SchemeGroupVersion.WithKind("BitcoinNetwork")),
+			},
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -228,6 +260,12 @@ func (c *Controller) doRecon(key string) bool {
 	bcNetwork, err := c.bcLister.BitcoinNetworks(namespace).Get(name)
 	if err != nil {
 		klog.Infof("Could not retrieve bitcoin network from cache - already deleted?")
+		return true
+	}
+	// If the deletion timestamp is set, this bitcoin network is scheduled for
+	// deletion and we ignore it
+	if bcNetwork.DeletionTimestamp != nil {
+		klog.Infof("Deletion timestamp already set for this bitcoin network, ignoring\n")
 		return true
 	}
 	_, err = c.svcLister.Services(namespace).Get(svcName)

@@ -3,4 +3,4 @@ kind: BitcoinNetwork
 metadata:
   name: my-network
 spec:
-  nodes: 2
+  nodes: 3
