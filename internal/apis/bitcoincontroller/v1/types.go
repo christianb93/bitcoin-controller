@@ -26,9 +26,27 @@ type BitcoinNetworkSpec struct {
 
 // +k8s:deepcopy-gen=true
 
+// BitcoinNetworkNode represents an individual node of the bitcoin network (i.e. pod running
+// the bitcoind container
+type BitcoinNetworkNode struct {
+	// a number from 0...n-1 in a deployment with n nodes, corresponding to
+	// the ordinal in the stateful set
+	Ordinal int32 `json:"ordinal"`
+	// is this node ready, i.e. is the bitcoind RPC server ready to accept requests?
+	Ready bool `json:"ready"`
+	// the IP of the node, i.e. the IP of the pod running the node
+	IP string `json:"ip"`
+	// the name of the node
+	NodeName string `json:"nodeName"`
+	// the DNS name
+	DNSName string `json:"dnsName"`
+}
+
+// +k8s:deepcopy-gen=true
+
 // BitcoinNetworkStatus is the as-is state of a bitcoin network
 type BitcoinNetworkStatus struct {
-	Nodes int `json:"nodes"`
+	Nodes []BitcoinNetworkNode `json:"nodes"`
 }
 
 // +k8s:deepcopy-gen=true

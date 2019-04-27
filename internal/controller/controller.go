@@ -2,9 +2,11 @@ package controller
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	bcv1 "github.com/christianb93/bitcoin-controller/internal/apis/bitcoincontroller/v1"
+	bcversioned "github.com/christianb93/bitcoin-controller/internal/generated/clientset/versioned"
 	bcInformers "github.com/christianb93/bitcoin-controller/internal/generated/informers/externalversions/bitcoincontroller/v1"
 	bcListers "github.com/christianb93/bitcoin-controller/internal/generated/listers/bitcoincontroller/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -37,10 +39,13 @@ type Controller struct {
 	bcInformerSynced  func() bool
 	stsInformerSynced func() bool
 	svcInformerSynced func() bool
+	podInformerSynced func() bool
 	bcLister          bcListers.BitcoinNetworkLister
 	stsLister         appsv1Listers.StatefulSetLister
 	svcLister         corev1Listers.ServiceLister
+	podLister         corev1Listers.PodLister
 	clientset         *kubernetes.Clientset
+	bcClientset       *bcversioned.Clientset
 }
 
 // AddBitcoinNetwork is the event handler for ADD
@@ -64,16 +69,21 @@ func (c *Controller) UpdateObject(old interface{}, new interface{}) {
 func NewController(bitcoinNetworkInformer bcInformers.BitcoinNetworkInformer,
 	stsInformer appsv1Informers.StatefulSetInformer,
 	svcInformer corev1Informers.ServiceInformer,
-	clientset *kubernetes.Clientset) *Controller {
+	podInformer corev1Informers.PodInformer,
+	clientset *kubernetes.Clientset,
+	bcClientset *bcversioned.Clientset) *Controller {
 	controller := &Controller{
 		workqueue:         workqueue.NewNamed("controllerWorkQueue"),
 		bcInformerSynced:  bitcoinNetworkInformer.Informer().HasSynced,
 		stsInformerSynced: stsInformer.Informer().HasSynced,
 		svcInformerSynced: svcInformer.Informer().HasSynced,
+		podInformerSynced: podInformer.Informer().HasSynced,
 		bcLister:          bitcoinNetworkInformer.Lister(),
 		stsLister:         stsInformer.Lister(),
 		svcLister:         svcInformer.Lister(),
+		podLister:         podInformer.Lister(),
 		clientset:         clientset,
+		bcClientset:       bcClientset,
 	}
 	// Set up event handler
 	bitcoinNetworkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -127,7 +137,11 @@ func (c *Controller) handleObject(obj interface{}) {
 // Run starts the controller main loop and all workers
 func (c *Controller) Run(stopChan <-chan struct{}, threads int) error {
 	klog.Info("Waiting for cache to sync")
-	if ok := cache.WaitForCacheSync(stopChan, c.bcInformerSynced, c.stsInformerSynced, c.svcInformerSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopChan,
+		c.bcInformerSynced,
+		c.stsInformerSynced,
+		c.svcInformerSynced,
+		c.podInformerSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 	klog.Info("Starting workers")
@@ -249,6 +263,61 @@ func (c *Controller) createHeadlessService(bcNetwork *bcv1.BitcoinNetwork, svcNa
 	}
 }
 
+// Helper function to determine whether a pod is ready
+func podReady(pod *corev1.Pod) bool {
+	result := false
+	// We need to look at the pods conditions
+	for _, cond := range pod.Status.Conditions {
+		if cond.Type == corev1.PodReady {
+			if cond.Status == corev1.ConditionTrue {
+				result = true
+			}
+		}
+	}
+	return result
+}
+
+// Update the status of the bitcoin network
+func (c *Controller) updateNetworkStatus(bcNetwork *bcv1.BitcoinNetwork, stsName string, svcName string) {
+	var nodeName string
+	var nodeList []bcv1.BitcoinNetworkNode
+	var node bcv1.BitcoinNetworkNode
+	klog.Infof("Updating status information for bitcoin network %s\n", bcNetwork.Name)
+	// We need to get all pods that are part of this stateful set - we simply do this
+	// by name
+	podNamespaceLister := c.podLister.Pods(bcNetwork.Namespace)
+	if podNamespaceLister == nil {
+		klog.Errorf("Could not get pod namespace lister for namespace %s, giving up\n", bcNetwork.Namespace)
+	}
+	for i := 0; i < int(bcNetwork.Spec.Nodes); i++ {
+		nodeName = stsName + "-" + strconv.FormatInt(int64(i), 10)
+		pod, err := podNamespaceLister.Get(nodeName)
+		if err != nil {
+			if !errors.IsNotFound(err) {
+				klog.Errorf("Unexpected error during GET of pod %s\n", nodeName)
+				return
+			}
+		} else {
+			// Have a pod. Find out more about it and add it to the map
+			node.Ordinal = int32(i)
+			node.Ready = podReady(pod)
+			node.IP = pod.Status.PodIP
+			node.NodeName = pod.Name
+			node.DNSName = pod.Name + "." + svcName
+			nodeList = append(nodeList, node)
+		}
+	}
+	// Make sure to create a deep copy to update the status
+	bcNetworkCopy := bcNetwork.DeepCopy()
+	bcNetworkCopy.Status = bcv1.BitcoinNetworkStatus{
+		Nodes: nodeList,
+	}
+	_, err := c.bcClientset.BitcoincontrollerV1().BitcoinNetworks(bcNetwork.Namespace).UpdateStatus(bcNetworkCopy)
+	if err != nil {
+		klog.Errorf("Error %s during UpdateStatus for bitcoin network %s\n", err, bcNetwork.Name)
+	}
+}
+
 // Main reconciliation function of our controller. If this is called
 // for a specific controller (referenced via the key), we will
 // - verify that a headless service exists and create one if needed
@@ -305,6 +374,8 @@ func (c *Controller) doRecon(key string) bool {
 			c.updateStatefulSet(sts, bcNetwork.Spec.Nodes)
 		}
 	}
+	// Finally update the status
+	c.updateNetworkStatus(bcNetwork, stsName, svcName)
 	return true
 }
 

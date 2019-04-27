@@ -79,7 +79,9 @@ func main() {
 		bcInformerFactory.Bitcoincontroller().V1().BitcoinNetworks(),
 		informerFactory.Apps().V1().StatefulSets(),
 		informerFactory.Core().V1().Services(),
+		informerFactory.Core().V1().Pods(),
 		client,
+		bcClient,
 	)
 	if controller == nil {
 		panic("Could not create controller")

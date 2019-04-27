@@ -23,6 +23,9 @@ rules:
 - apiGroups: ["bitcoincontroller.christianb93.github.com"]
   resources: ["bitcoinnetworks"]
   verbs: ["get", "list", "watch"]
+- apiGroups: ["bitcoincontroller.christianb93.github.com"]
+  resources: ["bitcoinnetworks/status"]
+  verbs: ["update"]  
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
