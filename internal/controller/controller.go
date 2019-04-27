@@ -187,6 +187,16 @@ func (c *Controller) createStatefulSet(bcNetwork *bcv1.BitcoinNetwork, stsName s
 							Name:            stsName + "-ctr",
 							Image:           "christianb93/bitcoind:latest",
 							ImagePullPolicy: corev1.PullIfNotPresent,
+							ReadinessProbe: &corev1.Probe{
+								InitialDelaySeconds: 10,
+								Handler: corev1.Handler{
+									Exec: &corev1.ExecAction{
+										Command: []string{"/usr/local/bin/bitcoin-cli",
+											"-regtest",
+											"-conf=/bitcoin.conf",
+											"getnetworkinfo"}},
+								},
+							},
 						},
 					},
 				},
