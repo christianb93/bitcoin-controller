@@ -118,7 +118,6 @@ func (c *Controller) handleObject(obj interface{}) {
 	if object, ok = obj.(metav1.Object); !ok {
 		klog.Error("Could not convert object, giving up")
 	}
-	klog.Infof("Processing object: %s", object.GetName())
 	if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
 		if ownerRef.Kind != "BitcoinNetwork" {
 			return
@@ -128,7 +127,7 @@ func (c *Controller) handleObject(obj interface{}) {
 			klog.Infof("ignoring orphaned object '%s' of bitcoin network '%s'", object.GetSelfLink(), ownerRef.Name)
 			return
 		}
-		klog.Infof("Queuing owning object %s\n", bcNetwork.Name)
+		klog.Infof("Queueing owning object %s\n", bcNetwork.Name)
 		c.enqueue(bcNetwork)
 		return
 	}
@@ -334,13 +333,14 @@ func (c *Controller) doRecon(key string) bool {
 	}
 	svcName := name + svcPostfix
 	stsName := name + stsPostfix
-	klog.Infof("Doing reconciliation for bitcoin-controller %s in namespace %s\n", name, namespace)
 	// Get the bitcoin network object in question
 	bcNetwork, err := c.bcLister.BitcoinNetworks(namespace).Get(name)
 	if err != nil {
 		klog.Infof("Could not retrieve bitcoin network from cache - already deleted?")
 		return true
 	}
+	klog.Infof("Doing reconciliation for bitcoin-controller %s in namespace %s (generation %d, resource version %s)\n",
+		name, namespace, bcNetwork.Generation, bcNetwork.ResourceVersion)
 	// If the deletion timestamp is set, this bitcoin network is scheduled for
 	// deletion and we ignore it
 	if bcNetwork.DeletionTimestamp != nil {
