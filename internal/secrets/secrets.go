@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	userKey     = "rpcuser"
-	passwordKey = "rpcpassword"
+	userKey     = "BC_RPC_USER"
+	passwordKey = "BC_RPC_PASSWORD"
 )
 
 // Default credentials

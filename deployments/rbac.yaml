@@ -25,7 +25,11 @@ rules:
   verbs: ["get", "list", "watch"]
 - apiGroups: ["bitcoincontroller.christianb93.github.com"]
   resources: ["bitcoinnetworks/status"]
-  verbs: ["update"]  
+  verbs: ["update"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["bitcoin-default-secret"]
+  verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

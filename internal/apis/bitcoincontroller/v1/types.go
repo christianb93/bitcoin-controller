@@ -21,7 +21,8 @@ type BitcoinNetwork struct {
 
 // BitcoinNetworkSpec is the to-be state of a bitcoin network
 type BitcoinNetworkSpec struct {
-	Nodes int32 `json:"nodes"`
+	Nodes  int32  `json:"nodes"`
+	Secret string `json:"secret"`
 }
 
 // +k8s:deepcopy-gen=true

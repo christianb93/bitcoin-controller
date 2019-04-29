@@ -4,3 +4,4 @@ metadata:
   name: my-network
 spec:
   nodes: 3
+  secret: bitcoin-default-secret 

@@ -34,7 +34,7 @@ func TestCredentialForSecretIntegration(t *testing.T) {
 			Name:      "my-secret",
 			Namespace: "default",
 		},
-		StringData: map[string]string{"rpcuser": "john", "rpcpassword": "secret"},
+		StringData: map[string]string{"BC_RPC_USER": "john", "BC_RPC_PASSWORD": "secret"},
 	}
 	//  First create a secret
 	_, err = client.CoreV1().Secrets("default").Create(mySecret)

@@ -223,6 +223,22 @@ func (c *Controller) createStatefulSet(bcNetwork *bcv1.BitcoinNetwork, stsName s
 			},
 		},
 	}
+	// If the bitcoin network has a non-default secret, refer to this secret in the container
+	// definition as well
+	optional := true
+	if bcNetwork.Spec.Secret != "" {
+		klog.Infof("Using secret %s\n", bcNetwork.Spec.Secret)
+		sts.Spec.Template.Spec.Containers[0].EnvFrom = []corev1.EnvFromSource{
+			corev1.EnvFromSource{
+				SecretRef: &corev1.SecretEnvSource{
+					Optional: &optional,
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: bcNetwork.Spec.Secret,
+					},
+				},
+			},
+		}
+	}
 	stsResult, err := c.clientset.AppsV1().StatefulSets(bcNetwork.Namespace).Create(sts)
 	if err != nil {
 		// Ignore duplicates
@@ -331,7 +347,7 @@ func (c *Controller) connectNode(config *bitcoinclient.Config, nodeList map[stri
 	// First we get a map of all nodes to which this node has been added
 	addedNodes, err := c.rpcClient.GetAddedNodes(config)
 	if err != nil {
-		klog.Errorf("Could not get added node list from node %s, error message is \n", config.ServerIP, err)
+		klog.Errorf("Could not get added node list from node %s, error message is %s\n", config.ServerIP, err)
 		return
 	}
 	// put those IP addressses into a map as well
@@ -386,7 +402,6 @@ func (c *Controller) syncNodes(nodeList []bcv1.BitcoinNetworkNode, secretName st
 	if err != nil {
 		klog.Infof("Could not get credentials, using defaults")
 	} else {
-		klog.Infof("Using credentials %s:%s\n", user, password)
 		config.RPCUser = user
 		config.RPCPassword = password
 	}
@@ -457,7 +472,7 @@ func (c *Controller) doRecon(key string) bool {
 	oldNodeList := bcNetwork.Status.Nodes
 	newNodeList := c.updateNetworkStatus(bcNetwork, stsName, svcName)
 	if !reflect.DeepEqual(oldNodeList, newNodeList) {
-		c.syncNodes(newNodeList, "", bcNetwork.Namespace)
+		c.syncNodes(newNodeList, bcNetwork.Spec.Secret, bcNetwork.Namespace)
 	}
 	return true
 }
