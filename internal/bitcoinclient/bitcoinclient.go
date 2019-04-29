@@ -88,10 +88,17 @@ func NewConfig(serverIP string, serverPort int, rpcuser string, rpcpassword stri
 		RPCPassword: rpcpassword}
 }
 
+// HTTPClient is something that has a Do method. It is of course
+// implemented by http.Client but we use an interface to allow for
+// unit testing
+type HTTPClient interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
 // BitcoinClient represents a client
 type BitcoinClient struct {
 	ClientConfig Config
-	HTTPClient   *http.Client
+	HTTPClient   HTTPClient
 }
 
 // NewClientForConfig creates a client for a given config
@@ -99,6 +106,14 @@ func NewClientForConfig(config *Config) *BitcoinClient {
 	return &BitcoinClient{
 		ClientConfig: *config,
 		HTTPClient:   &http.Client{},
+	}
+}
+
+// NewClient creates a client for a given config and a given HTTP client
+func NewClient(config *Config, client HTTPClient) *BitcoinClient {
+	return &BitcoinClient{
+		ClientConfig: *config,
+		HTTPClient:   client,
 	}
 }
 
