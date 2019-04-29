@@ -117,15 +117,14 @@ func NewClient(config *Config, client HTTPClient) *BitcoinClient {
 	}
 }
 
-// RawRequest submits a raw request. If targetIP is empty, the IP from the
-// configuration is taken
-func (c *BitcoinClient) RawRequest(method string, params []string, targetIP string) (interface{}, error) {
+// RawRequest submits a raw request. If config is nil, the configuration from
+// the BitcoinClient is used
+func (c *BitcoinClient) RawRequest(method string, params []string, config *Config) (interface{}, error) {
 	var rpcResponse RPCResponse
-	var actualip = targetIP
-	if targetIP == "" {
-		actualip = c.ClientConfig.ServerIP
+	if config == nil {
+		config = &c.ClientConfig
 	}
-	url := "http://" + actualip + ":" + strconv.Itoa(c.ClientConfig.ServerPort)
+	url := "http://" + config.ServerIP + ":" + strconv.Itoa(config.ServerPort)
 	buf := new(bytes.Buffer)
 	encoder := json.NewEncoder(buf)
 	rpcRequest := RPCRequest{
@@ -142,7 +141,7 @@ func (c *BitcoinClient) RawRequest(method string, params []string, targetIP stri
 	if err != nil {
 		return nil, err
 	}
-	request.SetBasicAuth(c.ClientConfig.RPCUser, c.ClientConfig.RPCPassword)
+	request.SetBasicAuth(config.RPCUser, config.RPCPassword)
 	response, err := c.HTTPClient.Do(request)
 	if err != nil {
 		return nil, err
@@ -159,24 +158,21 @@ func (c *BitcoinClient) RawRequest(method string, params []string, targetIP stri
 	return rpcResponse.Result, nil
 }
 
-// AddNode invokes the addnode RPC method. If targetIP is the empty
-// string, the IP in the config will be used
-func (c *BitcoinClient) AddNode(nodeIP string, targetIP string) error {
-	_, err := c.RawRequest("addnode", []string{nodeIP, "add"}, targetIP)
+// AddNode invokes the addnode RPC method
+func (c *BitcoinClient) AddNode(nodeIP string, config *Config) error {
+	_, err := c.RawRequest("addnode", []string{nodeIP, "add"}, config)
 	return err
 }
 
-// RemoveNode invokes the addnode RPC method. If targetIP is the empty
-// string, the IP in the config will be used
-func (c *BitcoinClient) RemoveNode(nodeIP string, targetIP string) error {
-	_, err := c.RawRequest("addnode", []string{nodeIP, "remove"}, targetIP)
+// RemoveNode invokes the addnode RPC method
+func (c *BitcoinClient) RemoveNode(nodeIP string, config *Config) error {
+	_, err := c.RawRequest("addnode", []string{nodeIP, "remove"}, config)
 	return err
 }
 
-// GetAddedNodes gets the list of added nodes. If targetIP is the empty string,
-// the IP in the config will be used
-func (c *BitcoinClient) GetAddedNodes(targetIP string) ([]AddedNode, error) {
-	rawNodes, err := c.RawRequest("getaddednodeinfo", nil, targetIP)
+// GetAddedNodes gets the list of added nodes
+func (c *BitcoinClient) GetAddedNodes(config *Config) ([]AddedNode, error) {
+	rawNodes, err := c.RawRequest("getaddednodeinfo", nil, config)
 	if err != nil {
 		return nil, err
 	}

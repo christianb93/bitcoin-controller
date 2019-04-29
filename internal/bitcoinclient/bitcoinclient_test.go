@@ -39,7 +39,7 @@ func TestNewClient(t *testing.T) {
 func TestRawRequestIntegration(t *testing.T) {
 	config := bitcoinclient.NewConfig("127.0.0.1", 18332, "user", "password")
 	client := bitcoinclient.NewClientForConfig(config)
-	resp, err := client.RawRequest("getnetworkinfo", nil, "")
+	resp, err := client.RawRequest("getnetworkinfo", nil, nil)
 	if err != nil {
 		t.Errorf("Unexpected error %s\n", err)
 	}
@@ -57,7 +57,7 @@ func TestRawRequestIntegration(t *testing.T) {
 func TestRawRequestMethodUnknownIntegration(t *testing.T) {
 	config := bitcoinclient.NewConfig("127.0.0.1", 18332, "user", "password")
 	client := bitcoinclient.NewClientForConfig(config)
-	_, err := client.RawRequest("getnetworkinfox", nil, "")
+	_, err := client.RawRequest("getnetworkinfox", nil, nil)
 	if err == nil {
 		t.Error("Expected error")
 	}
@@ -65,14 +65,17 @@ func TestRawRequestMethodUnknownIntegration(t *testing.T) {
 
 // TestAddNodeIntegration tests that a node can be added
 func TestAddNodeIntegration(t *testing.T) {
-	config := bitcoinclient.NewConfig("127.0.0.1", 18332, "user", "password")
+	config := bitcoinclient.NewConfig("127.0.0.2", 18332, "user", "password")
 	client := bitcoinclient.NewClientForConfig(config)
-	err := client.AddNode("127.0.0.3", "")
+	// Now overwrite the config - this will also test that we use
+	// this config and not the client config
+	config = bitcoinclient.NewConfig("127.0.0.1", 18332, "user", "password")
+	err := client.AddNode("127.0.0.3", config)
 	if err != nil {
 		t.Errorf("Unexpected error %s\n", err)
 	}
 	// Verify that node is in the list of added nodes
-	addedNodeList, err := client.GetAddedNodes("")
+	addedNodeList, err := client.GetAddedNodes(config)
 	if err != nil {
 		t.Errorf("Have unexpected error %s\n", err)
 		t.FailNow()
@@ -88,12 +91,12 @@ func TestAddNodeIntegration(t *testing.T) {
 		t.FailNow()
 	}
 	// Now remove node again
-	err = client.RemoveNode("127.0.0.3", "")
+	err = client.RemoveNode("127.0.0.3", config)
 	if err != nil {
 		t.Errorf("Unexpected error %s\n", err)
 	}
 	// and make sure that is has been removed
-	addedNodeList, err = client.GetAddedNodes("")
+	addedNodeList, err = client.GetAddedNodes(config)
 	if err != nil {
 		t.Errorf("Have unexpected error %s\n", err)
 		t.FailNow()
@@ -115,12 +118,12 @@ func TestAddNodeIntegration(t *testing.T) {
 func TestAddNodeTwiceIntegration(t *testing.T) {
 	config := bitcoinclient.NewConfig("127.0.0.1", 18332, "user", "password")
 	client := bitcoinclient.NewClientForConfig(config)
-	err := client.AddNode("127.0.0.3", "")
+	err := client.AddNode("127.0.0.3", nil)
 	if err != nil {
 		t.Errorf("Unexpected error %s\n", err)
 	}
 	// try to add it twice
-	err = client.AddNode("127.0.0.3", "")
+	err = client.AddNode("127.0.0.3", nil)
 	if err == nil {
 		t.Errorf("Did expect an error but did not get one\n")
 	}
@@ -132,7 +135,7 @@ func TestAddNodeTwiceIntegration(t *testing.T) {
 		t.Error("Error not as expected")
 	}
 	// Now remove node again
-	err = client.RemoveNode("127.0.0.3", "")
+	err = client.RemoveNode("127.0.0.3", nil)
 	if err != nil {
 		t.Errorf("Unexpected error %s\n", err)
 	}

@@ -11,6 +11,7 @@ import (
 	bcversioned "github.com/christianb93/bitcoin-controller/internal/generated/clientset/versioned"
 	bcInformers "github.com/christianb93/bitcoin-controller/internal/generated/informers/externalversions/bitcoincontroller/v1"
 	bcListers "github.com/christianb93/bitcoin-controller/internal/generated/listers/bitcoincontroller/v1"
+	secrets "github.com/christianb93/bitcoin-controller/internal/secrets"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -86,9 +87,10 @@ func NewController(bitcoinNetworkInformer bcInformers.BitcoinNetworkInformer,
 		clientset:         clientset,
 		bcClientset:       bcClientset,
 		rpcClient: bitcoinclient.NewClientForConfig(&bitcoinclient.Config{
-			RPCUser:     "user",
-			RPCPassword: "password",
+			RPCUser:     secrets.DefaultRPCUser,
+			RPCPassword: secrets.DefaultRPCPassword,
 			ServerPort:  18332,
+			ServerIP:    "127.0.0.1",
 		}),
 	}
 	// Set up event handler
@@ -322,13 +324,14 @@ func (c *Controller) updateNetworkStatus(bcNetwork *bcv1.BitcoinNetwork, stsName
 	return nodeList
 }
 
-// connectNode connect node targetIP to all other nodes that appear as
-// keys in the nodeList
-func (c *Controller) connectNode(targetIP string, nodeList map[string]struct{}) {
+// connectNode connects a node to all other nodes that appear as
+// keys in the nodeList. The parameter config is expected to be
+// a complete config to connect to the target node
+func (c *Controller) connectNode(config *bitcoinclient.Config, nodeList map[string]struct{}) {
 	// First we get a map of all nodes to which this node has been added
-	addedNodes, err := c.rpcClient.GetAddedNodes(targetIP)
+	addedNodes, err := c.rpcClient.GetAddedNodes(config)
 	if err != nil {
-		klog.Errorf("Could not get added node list from node %s, error message is \n", targetIP, err)
+		klog.Errorf("Could not get added node list from node %s, error message is \n", config.ServerIP, err)
 		return
 	}
 	// put those IP addressses into a map as well
@@ -336,17 +339,17 @@ func (c *Controller) connectNode(targetIP string, nodeList map[string]struct{}) 
 	for _, addedNode := range addedNodes {
 		addedNodesMap[addedNode.NodeIP] = struct{}{}
 	}
-	// and add the targetIP itself - this should now be in both maps
-	addedNodesMap[targetIP] = struct{}{}
+	// and add the target IP itself - this should now be in both maps
+	addedNodesMap[config.ServerIP] = struct{}{}
 	// First go through all nodes that appear in nodeList but
 	// not in addedNodesMap and add them
 	for node := range nodeList {
 		_, exists := addedNodesMap[node]
 		if !exists {
-			klog.Infof("IP %s does not appear in added node list of %s, needs to be added\n", node, targetIP)
-			err = c.rpcClient.AddNode(node, targetIP)
+			klog.Infof("IP %s does not appear in added node list of %s, needs to be added\n", node, config.ServerIP)
+			err = c.rpcClient.AddNode(node, config)
 			if err != nil && !bitcoinclient.IsNodeAlreadyAdded(err) {
-				klog.Errorf("Could not add node %s to %s, error is %s\n", node, targetIP, err)
+				klog.Errorf("Could not add node %s to %s, error is %s\n", node, config.ServerIP, err)
 			}
 		}
 	}
@@ -355,17 +358,17 @@ func (c *Controller) connectNode(targetIP string, nodeList map[string]struct{}) 
 	for node := range addedNodesMap {
 		_, exists := nodeList[node]
 		if !exists {
-			klog.Infof("IP %s is in added node list of %s but not ready, needs to be removed\n", node, targetIP)
-			err = c.rpcClient.RemoveNode(node, targetIP)
+			klog.Infof("IP %s is in added node list of %s but not ready, needs to be removed\n", node, config.ServerIP)
+			err = c.rpcClient.RemoveNode(node, config)
 			if err != nil && !bitcoinclient.IsNodeNotAdded(err) {
-				klog.Errorf("Could not remove node %s from %s, error is %s\n", node, targetIP, err)
+				klog.Errorf("Could not remove node %s from %s, error is %s\n", node, config.ServerIP, err)
 			}
 		}
 	}
 }
 
 // syncNode connects all nodes of the bitcoin network to each other
-func (c *Controller) syncNodes(nodeList []bcv1.BitcoinNetworkNode) {
+func (c *Controller) syncNodes(nodeList []bcv1.BitcoinNetworkNode, secretName string, secretNamespace string) {
 	// We create a hash map that only contains the IP addresses of the
 	// nodes which are ready
 	readyNodes := make(map[string]struct{})
@@ -374,9 +377,23 @@ func (c *Controller) syncNodes(nodeList []bcv1.BitcoinNetworkNode) {
 			readyNodes[node.IP] = struct{}{}
 		}
 	}
+	// Create a configuration template. We make a copy
+	// of the default configuration first which will
+	// give us default credentials and the correct port
+	config := c.rpcClient.ClientConfig
+	// get credentials
+	user, password, err := secrets.CredentialsForSecret(secretName, secretNamespace, c.clientset)
+	if err != nil {
+		klog.Infof("Could not get credentials, using defaults")
+	} else {
+		klog.Infof("Using credentials %s:%s\n", user, password)
+		config.RPCUser = user
+		config.RPCPassword = password
+	}
 	// We now go throught the list node by node
 	for nodeIP := range readyNodes {
-		c.connectNode(nodeIP, readyNodes)
+		config.ServerIP = nodeIP
+		c.connectNode(&config, readyNodes)
 	}
 }
 
@@ -440,7 +457,7 @@ func (c *Controller) doRecon(key string) bool {
 	oldNodeList := bcNetwork.Status.Nodes
 	newNodeList := c.updateNetworkStatus(bcNetwork, stsName, svcName)
 	if !reflect.DeepEqual(oldNodeList, newNodeList) {
-		c.syncNodes(newNodeList)
+		c.syncNodes(newNodeList, "", bcNetwork.Namespace)
 	}
 	return true
 }
