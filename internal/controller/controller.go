@@ -2,10 +2,12 @@ package controller
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"time"
 
 	bcv1 "github.com/christianb93/bitcoin-controller/internal/apis/bitcoincontroller/v1"
+	bitcoinclient "github.com/christianb93/bitcoin-controller/internal/bitcoinclient"
 	bcversioned "github.com/christianb93/bitcoin-controller/internal/generated/clientset/versioned"
 	bcInformers "github.com/christianb93/bitcoin-controller/internal/generated/informers/externalversions/bitcoincontroller/v1"
 	bcListers "github.com/christianb93/bitcoin-controller/internal/generated/listers/bitcoincontroller/v1"
@@ -46,17 +48,16 @@ type Controller struct {
 	podLister         corev1Listers.PodLister
 	clientset         *kubernetes.Clientset
 	bcClientset       *bcversioned.Clientset
+	rpcClient         *bitcoinclient.BitcoinClient
 }
 
 // AddBitcoinNetwork is the event handler for ADD
 func (c *Controller) AddBitcoinNetwork(obj interface{}) {
-	klog.Infof("ADD handler called\n")
 	c.enqueue(obj)
 }
 
 // UpdateBitcoinNetwork is the event handler for MOD
 func (c *Controller) UpdateBitcoinNetwork(old interface{}, new interface{}) {
-	klog.Infof("UPDATE handler called\n")
 	c.enqueue(new)
 }
 
@@ -84,6 +85,11 @@ func NewController(bitcoinNetworkInformer bcInformers.BitcoinNetworkInformer,
 		podLister:         podInformer.Lister(),
 		clientset:         clientset,
 		bcClientset:       bcClientset,
+		rpcClient: bitcoinclient.NewClientForConfig(&bitcoinclient.Config{
+			RPCUser:     "user",
+			RPCPassword: "password",
+			ServerPort:  18332,
+		}),
 	}
 	// Set up event handler
 	bitcoinNetworkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -127,7 +133,6 @@ func (c *Controller) handleObject(obj interface{}) {
 			klog.Infof("ignoring orphaned object '%s' of bitcoin network '%s'", object.GetSelfLink(), ownerRef.Name)
 			return
 		}
-		klog.Infof("Queueing owning object %s\n", bcNetwork.Name)
 		c.enqueue(bcNetwork)
 		return
 	}
@@ -277,11 +282,10 @@ func podReady(pod *corev1.Pod) bool {
 }
 
 // Update the status of the bitcoin network
-func (c *Controller) updateNetworkStatus(bcNetwork *bcv1.BitcoinNetwork, stsName string, svcName string) {
+func (c *Controller) updateNetworkStatus(bcNetwork *bcv1.BitcoinNetwork, stsName string, svcName string) []bcv1.BitcoinNetworkNode {
 	var nodeName string
 	var nodeList []bcv1.BitcoinNetworkNode
 	var node bcv1.BitcoinNetworkNode
-	klog.Infof("Updating status information for bitcoin network %s\n", bcNetwork.Name)
 	// We need to get all pods that are part of this stateful set - we simply do this
 	// by name
 	podNamespaceLister := c.podLister.Pods(bcNetwork.Namespace)
@@ -294,7 +298,7 @@ func (c *Controller) updateNetworkStatus(bcNetwork *bcv1.BitcoinNetwork, stsName
 		if err != nil {
 			if !errors.IsNotFound(err) {
 				klog.Errorf("Unexpected error during GET of pod %s\n", nodeName)
-				return
+				return nil
 			}
 		} else {
 			// Have a pod. Find out more about it and add it to the map
@@ -314,6 +318,65 @@ func (c *Controller) updateNetworkStatus(bcNetwork *bcv1.BitcoinNetwork, stsName
 	_, err := c.bcClientset.BitcoincontrollerV1().BitcoinNetworks(bcNetwork.Namespace).UpdateStatus(bcNetworkCopy)
 	if err != nil {
 		klog.Errorf("Error %s during UpdateStatus for bitcoin network %s\n", err, bcNetwork.Name)
+	}
+	return nodeList
+}
+
+// connectNode connect node targetIP to all other nodes that appear as
+// keys in the nodeList
+func (c *Controller) connectNode(targetIP string, nodeList map[string]struct{}) {
+	// First we get a map of all nodes to which this node has been added
+	addedNodes, err := c.rpcClient.GetAddedNodes(targetIP)
+	if err != nil {
+		klog.Errorf("Could not get added node list from node %s, error message is \n", targetIP, err)
+		return
+	}
+	// put those IP addressses into a map as well
+	addedNodesMap := make(map[string]struct{})
+	for _, addedNode := range addedNodes {
+		addedNodesMap[addedNode.NodeIP] = struct{}{}
+	}
+	// and add the targetIP itself - this should now be in both maps
+	addedNodesMap[targetIP] = struct{}{}
+	// First go through all nodes that appear in nodeList but
+	// not in addedNodesMap and add them
+	for node := range nodeList {
+		_, exists := addedNodesMap[node]
+		if !exists {
+			klog.Infof("IP %s does not appear in added node list of %s, needs to be added\n", node, targetIP)
+			err = c.rpcClient.AddNode(node, targetIP)
+			if err != nil && !bitcoinclient.IsNodeAlreadyAdded(err) {
+				klog.Errorf("Could not add node %s to %s, error is %s\n", node, targetIP, err)
+			}
+		}
+	}
+	// Then go through all nodes that have been added before but do not
+	// seem to be ready any more
+	for node := range addedNodesMap {
+		_, exists := nodeList[node]
+		if !exists {
+			klog.Infof("IP %s is in added node list of %s but not ready, needs to be removed\n", node, targetIP)
+			err = c.rpcClient.RemoveNode(node, targetIP)
+			if err != nil && !bitcoinclient.IsNodeNotAdded(err) {
+				klog.Errorf("Could not remove node %s from %s, error is %s\n", node, targetIP, err)
+			}
+		}
+	}
+}
+
+// syncNode connects all nodes of the bitcoin network to each other
+func (c *Controller) syncNodes(nodeList []bcv1.BitcoinNetworkNode) {
+	// We create a hash map that only contains the IP addresses of the
+	// nodes which are ready
+	readyNodes := make(map[string]struct{})
+	for _, node := range nodeList {
+		if node.Ready {
+			readyNodes[node.IP] = struct{}{}
+		}
+	}
+	// We now go throught the list node by node
+	for nodeIP := range readyNodes {
+		c.connectNode(nodeIP, readyNodes)
 	}
 }
 
@@ -339,8 +402,6 @@ func (c *Controller) doRecon(key string) bool {
 		klog.Infof("Could not retrieve bitcoin network from cache - already deleted?")
 		return true
 	}
-	klog.Infof("Doing reconciliation for bitcoin-controller %s in namespace %s (generation %d, resource version %s)\n",
-		name, namespace, bcNetwork.Generation, bcNetwork.ResourceVersion)
 	// If the deletion timestamp is set, this bitcoin network is scheduled for
 	// deletion and we ignore it
 	if bcNetwork.DeletionTimestamp != nil {
@@ -374,8 +435,13 @@ func (c *Controller) doRecon(key string) bool {
 			c.updateStatefulSet(sts, bcNetwork.Spec.Nodes)
 		}
 	}
-	// Finally update the status
-	c.updateNetworkStatus(bcNetwork, stsName, svcName)
+	// Finally update the status. We first get the old node list to be able to
+	// see whether there was a change
+	oldNodeList := bcNetwork.Status.Nodes
+	newNodeList := c.updateNetworkStatus(bcNetwork, stsName, svcName)
+	if !reflect.DeepEqual(oldNodeList, newNodeList) {
+		c.syncNodes(newNodeList)
+	}
 	return true
 }
 
@@ -386,7 +452,6 @@ func (c *Controller) workerMainLoop() {
 		if shutdown {
 			return
 		}
-		klog.Infof("Got object %s from work queue\n", obj)
 		// Convert obj to string
 		key, ok := obj.(string)
 		if !ok {
