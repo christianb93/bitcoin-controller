@@ -9,6 +9,7 @@ import (
 	bcv1 "github.com/christianb93/bitcoin-controller/internal/apis/bitcoincontroller/v1"
 	bitcoinclient "github.com/christianb93/bitcoin-controller/internal/bitcoinclient"
 	bcversioned "github.com/christianb93/bitcoin-controller/internal/generated/clientset/versioned"
+	bitcoinscheme "github.com/christianb93/bitcoin-controller/internal/generated/clientset/versioned/scheme"
 	bcInformers "github.com/christianb93/bitcoin-controller/internal/generated/informers/externalversions/bitcoincontroller/v1"
 	bcListers "github.com/christianb93/bitcoin-controller/internal/generated/listers/bitcoincontroller/v1"
 	secrets "github.com/christianb93/bitcoin-controller/internal/secrets"
@@ -16,13 +17,17 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	appsv1Informers "k8s.io/client-go/informers/apps/v1"
 	corev1Informers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	appsv1Listers "k8s.io/client-go/listers/apps/v1"
 	corev1Listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 )
@@ -50,6 +55,7 @@ type Controller struct {
 	clientset         *kubernetes.Clientset
 	bcClientset       *bcversioned.Clientset
 	rpcClient         *bitcoinclient.BitcoinClient
+	recorder          record.EventRecorder
 }
 
 // AddBitcoinNetwork is the event handler for ADD
@@ -74,6 +80,15 @@ func NewController(bitcoinNetworkInformer bcInformers.BitcoinNetworkInformer,
 	podInformer corev1Informers.PodInformer,
 	clientset *kubernetes.Clientset,
 	bcClientset *bcversioned.Clientset) *Controller {
+	klog.Info("Creating event broadcaster")
+	// Add bitcoin-controller types to the default Kubernetes Scheme so Events can be
+	// logged
+	runtime.Must(bitcoinscheme.AddToScheme(scheme.Scheme))
+	eventBroadcaster := record.NewBroadcaster()
+	// We create the Events interface in the default namespace, but the events will inherit
+	// the namespace of the object to which they refer
+	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: clientset.CoreV1().Events("")})
+	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "bitcoin-controller"})
 	controller := &Controller{
 		workqueue:         workqueue.NewNamed("controllerWorkQueue"),
 		bcInformerSynced:  bitcoinNetworkInformer.Informer().HasSynced,
@@ -92,6 +107,7 @@ func NewController(bitcoinNetworkInformer bcInformers.BitcoinNetworkInformer,
 			ServerPort:  18332,
 			ServerIP:    "127.0.0.1",
 		}),
+		recorder: recorder,
 	}
 	// Set up event handler
 	bitcoinNetworkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -246,9 +262,13 @@ func (c *Controller) createStatefulSet(bcNetwork *bcv1.BitcoinNetwork, stsName s
 			klog.Infof("Stateless set %s does already exist, ignoring\n", stsName)
 		} else {
 			klog.Errorf("Could not create stateful set %s, error is %s\n", stsName, err)
+			c.recorder.Event(bcNetwork, corev1.EventTypeWarning, "CreationError",
+				fmt.Sprintf("Could not create stateful set %s, error is %s\n", stsName, err))
 		}
 		return nil
 	}
+	c.recorder.Event(bcNetwork, corev1.EventTypeNormal, "Info",
+		fmt.Sprintf("Created stateful set for bitcoin network  %s\n", bcNetwork.Name))
 	return stsResult
 }
 
@@ -281,8 +301,13 @@ func (c *Controller) createHeadlessService(bcNetwork *bcv1.BitcoinNetwork, svcNa
 			klog.Infof("Service %s does already exist, ignoring\n", svcName)
 		} else {
 			klog.Errorf("Could not create service %s, error is %s\n", svcName, err)
+			c.recorder.Event(bcNetwork, corev1.EventTypeWarning, "CreationError",
+				fmt.Sprintf("Could not service %s, error is %s\n", svcName, err))
 		}
+		return
 	}
+	c.recorder.Event(bcNetwork, corev1.EventTypeNormal, "Info",
+		fmt.Sprintf("Created headless service for bitcoin network  %s\n", bcNetwork.Name))
 }
 
 // Helper function to determine whether a pod is ready
@@ -464,6 +489,8 @@ func (c *Controller) doRecon(key string) bool {
 	if sts != nil {
 		if *sts.Spec.Replicas != bcNetwork.Spec.Nodes {
 			klog.Infof("Adjusting number of replicas to %d\n", bcNetwork.Spec.Nodes)
+			c.recorder.Event(bcNetwork, corev1.EventTypeNormal, "Info",
+				fmt.Sprintf("Adjusting number of replicas to %d\n", bcNetwork.Spec.Nodes))
 			c.updateStatefulSet(sts, bcNetwork.Spec.Nodes)
 		}
 	}

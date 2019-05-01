@@ -15,7 +15,7 @@ metadata:
   name: bitcoin-controller-role
 rules:
 - apiGroups: ["apps", ""]
-  resources: ["statefulsets", "services"]
+  resources: ["statefulsets", "services", "events"]
   verbs: ["get", "watch", "list", "create", "update", "delete"]
 - apiGroups: [""]
   resources: ["pods"]
