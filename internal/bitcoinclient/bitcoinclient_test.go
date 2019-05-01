@@ -8,7 +8,7 @@ import (
 )
 
 // TestConfigCreation tests the creation of a configuration
-func TestConfigCreation(t *testing.T) {
+func TestConfigCreationUnit(t *testing.T) {
 	config := bitcoinclient.NewConfig("127.0.0.1", 18332, "user", "password")
 	if config.RPCUser != "user" {
 		t.Errorf("RPCUser: got %s, expected %s\n", config.RPCUser, "user")
@@ -16,7 +16,7 @@ func TestConfigCreation(t *testing.T) {
 }
 
 // TestClientFromConfig tests the creation of a client from a config
-func TestClientFromConfig(t *testing.T) {
+func TestClientFromConfigUnit(t *testing.T) {
 	config := bitcoinclient.NewConfig("127.0.0.1", 18332, "user", "password")
 	client := bitcoinclient.NewClientForConfig(config)
 	if client == nil {
@@ -25,7 +25,7 @@ func TestClientFromConfig(t *testing.T) {
 }
 
 // TestNewClien tests the creation of a client
-func TestNewClient(t *testing.T) {
+func TestNewClientUnit(t *testing.T) {
 	config := bitcoinclient.NewConfig("127.0.0.1", 18332, "user", "password")
 	httpClient := &http.Client{}
 	client := bitcoinclient.NewClient(config, httpClient)
@@ -33,5 +33,3 @@ func TestNewClient(t *testing.T) {
 		t.Error("Could not create client")
 	}
 }
-
-/

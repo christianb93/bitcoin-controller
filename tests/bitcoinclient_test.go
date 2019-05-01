@@ -1,3 +1,6 @@
+// Integration tests for the bitcoin client. Make sure to start a local bitcoind before running this:
+// docker run -d --rm -p 18332:18332 christianb93/bitcoind
+
 package main
 
 import (
