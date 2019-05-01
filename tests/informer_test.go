@@ -11,7 +11,7 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
-func TestInformerCreation(t *testing.T) {
+func TestInformerCreationIntegration(t *testing.T) {
 	home := homedir.HomeDir()
 	kubeconfig := filepath.Join(home, ".kube", "config")
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)

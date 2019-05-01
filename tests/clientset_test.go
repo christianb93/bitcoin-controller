@@ -12,7 +12,7 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
-func TestClientsetCreation(t *testing.T) {
+func TestClientsetCreationIntegration(t *testing.T) {
 	home := homedir.HomeDir()
 	kubeconfig := filepath.Join(home, ".kube", "config")
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
@@ -26,7 +26,7 @@ func TestClientsetCreation(t *testing.T) {
 	}
 }
 
-func TestList(t *testing.T) {
+func TestClientsetListIntegration(t *testing.T) {
 	home := homedir.HomeDir()
 	kubeconfig := filepath.Join(home, ".kube", "config")
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
@@ -49,7 +49,7 @@ func TestList(t *testing.T) {
 	}
 }
 
-func TestCreateGetDelete(t *testing.T) {
+func TestClientsetCreateGetDeleteIntegration(t *testing.T) {
 	home := homedir.HomeDir()
 	kubeconfig := filepath.Join(home, ".kube", "config")
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
