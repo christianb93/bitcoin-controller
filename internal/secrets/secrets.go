@@ -8,9 +8,10 @@ import (
 	"k8s.io/klog"
 )
 
+// Keys used in the secret
 const (
-	userKey     = "BC_RPC_USER"
-	passwordKey = "BC_RPC_PASSWORD"
+	UserKey     = "BC_RPC_USER"
+	PasswordKey = "BC_RPC_PASSWORD"
 )
 
 // Default credentials
@@ -22,7 +23,7 @@ const (
 // CredentialsForSecret looks up credentials in a secret. If the secret does not exist,
 // or any error occurs, the default credentials are returned
 // If the secret Name is the empty string, the standard credentials are returned
-func CredentialsForSecret(secretName string, secretNamespace string, clientset *kubernetes.Clientset) (user string, password string, err error) {
+func CredentialsForSecret(secretName string, secretNamespace string, clientset kubernetes.Interface) (user string, password string, err error) {
 	if secretName == "" {
 		return DefaultRPCUser, DefaultRPCPassword, nil
 	}
@@ -32,15 +33,15 @@ func CredentialsForSecret(secretName string, secretNamespace string, clientset *
 		klog.Errorf("Could not get secret, error is %s\n", err)
 		return DefaultRPCUser, DefaultRPCPassword, err
 	}
-	data, ok := secret.Data[userKey]
+	data, ok := secret.Data[UserKey]
 	if !ok {
-		return DefaultRPCUser, DefaultRPCPassword, fmt.Errorf("Secret does not contain key %s", userKey)
+		return DefaultRPCUser, DefaultRPCPassword, fmt.Errorf("Secret does not contain key %s", UserKey)
 	}
 	user = string(data)
-	data, ok = secret.Data[passwordKey]
+	data, ok = secret.Data[PasswordKey]
 	password = string(data)
 	if !ok {
-		return DefaultRPCUser, DefaultRPCPassword, fmt.Errorf("Secret does not contain key %s", passwordKey)
+		return DefaultRPCUser, DefaultRPCPassword, fmt.Errorf("Secret does not contain key %s", PasswordKey)
 	}
 	return user, password, nil
 }

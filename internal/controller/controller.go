@@ -23,7 +23,6 @@ import (
 	corev1Informers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
-	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	appsv1Listers "k8s.io/client-go/listers/apps/v1"
 	corev1Listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -52,10 +51,11 @@ type Controller struct {
 	stsLister         appsv1Listers.StatefulSetLister
 	svcLister         corev1Listers.ServiceLister
 	podLister         corev1Listers.PodLister
-	clientset         *kubernetes.Clientset
-	bcClientset       *bcversioned.Clientset
-	rpcClient         *bitcoinclient.BitcoinClient
+	clientset         kubernetes.Interface
+	bcClientset       bcversioned.Interface
+	rpcClient         bitcoinclient.BitcoinClient
 	recorder          record.EventRecorder
+	broadcaster       record.EventBroadcaster
 }
 
 // AddBitcoinNetwork is the event handler for ADD
@@ -73,21 +73,47 @@ func (c *Controller) UpdateObject(old interface{}, new interface{}) {
 	c.handleObject(new)
 }
 
+// SetBcInformerSynced sets the function to check whether the informer is synced
+// should be used for tests only
+func (c *Controller) SetBcInformerSynced(f func() bool) {
+	c.bcInformerSynced = f
+}
+
+// SetStsInformerSynced sets the function to check whether the informer is synced
+// should be used for tests only
+func (c *Controller) SetStsInformerSynced(f func() bool) {
+	c.stsInformerSynced = f
+}
+
+// SetSvcInformerSynced sets the function to check whether the informer is synced
+// should be used for tests only
+func (c *Controller) SetSvcInformerSynced(f func() bool) {
+	c.svcInformerSynced = f
+}
+
+// SetPodInformerSynced sets the function to check whether the informer is synced
+// should be used for tests only
+func (c *Controller) SetPodInformerSynced(f func() bool) {
+	c.podInformerSynced = f
+}
+
+// SetRPCClient can be used during testing to inject a fake bitcoin client
+func (c *Controller) SetRPCClient(rpcClient bitcoinclient.BitcoinClient) {
+	c.rpcClient = rpcClient
+}
+
 // NewController creates a new bitcoin controller
 func NewController(bitcoinNetworkInformer bcInformers.BitcoinNetworkInformer,
 	stsInformer appsv1Informers.StatefulSetInformer,
 	svcInformer corev1Informers.ServiceInformer,
 	podInformer corev1Informers.PodInformer,
-	clientset *kubernetes.Clientset,
-	bcClientset *bcversioned.Clientset) *Controller {
+	clientset kubernetes.Interface,
+	bcClientset bcversioned.Interface) *Controller {
 	klog.Info("Creating event broadcaster")
 	// Add bitcoin-controller types to the default Kubernetes Scheme so Events can be
 	// logged
 	runtime.Must(bitcoinscheme.AddToScheme(scheme.Scheme))
 	eventBroadcaster := record.NewBroadcaster()
-	// We create the Events interface in the default namespace, but the events will inherit
-	// the namespace of the object to which they refer
-	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: clientset.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "bitcoin-controller"})
 	controller := &Controller{
 		workqueue:         workqueue.NewNamed("controllerWorkQueue"),
@@ -107,7 +133,8 @@ func NewController(bitcoinNetworkInformer bcInformers.BitcoinNetworkInformer,
 			ServerPort:  18332,
 			ServerIP:    "127.0.0.1",
 		}),
-		recorder: recorder,
+		recorder:    recorder,
+		broadcaster: eventBroadcaster,
 	}
 	// Set up event handler
 	bitcoinNetworkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -121,6 +148,15 @@ func NewController(bitcoinNetworkInformer bcInformers.BitcoinNetworkInformer,
 		UpdateFunc: controller.UpdateObject,
 	})
 	return controller
+}
+
+// AddEventSink adds an event sink to the controller. This allows us to inject
+// a mock object as a workaround for 	// https://github.com/kubernetes/client-go/issues/493
+// during testing
+func (c *Controller) AddEventSink(eventSink record.EventSink) {
+	// We create the Events interface in the "all" namespace, but the events will inherit
+	// the namespace of the object to which they refer
+	c.broadcaster.StartRecordingToSink(eventSink)
 }
 
 // enqueue converts a BitcoinNetwork into a namespace / name
@@ -421,7 +457,7 @@ func (c *Controller) syncNodes(nodeList []bcv1.BitcoinNetworkNode, secretName st
 	// Create a configuration template. We make a copy
 	// of the default configuration first which will
 	// give us default credentials and the correct port
-	config := c.rpcClient.ClientConfig
+	config := c.rpcClient.GetConfig()
 	// get credentials
 	user, password, err := secrets.CredentialsForSecret(secretName, secretNamespace, c.clientset)
 	if err != nil {

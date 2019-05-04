@@ -13,6 +13,7 @@ import (
 	bcinformers "github.com/christianb93/bitcoin-controller/internal/generated/informers/externalversions"
 	informers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 )
@@ -83,6 +84,7 @@ func main() {
 		client,
 		bcClient,
 	)
+	controller.AddEventSink(&typedcorev1.EventSinkImpl{Interface: client.CoreV1().Events("")})
 	if controller == nil {
 		panic("Could not create controller")
 	}

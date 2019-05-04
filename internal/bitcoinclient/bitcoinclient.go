@@ -95,31 +95,45 @@ type HTTPClient interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-// BitcoinClient represents a client
-type BitcoinClient struct {
+// BitcoinClient is a client to talk to a bitcoin daemon
+type BitcoinClient interface {
+	RawRequest(method string, params []string, config *Config) (interface{}, error)
+	AddNode(nodeIP string, config *Config) error
+	RemoveNode(nodeIP string, config *Config) error
+	GetAddedNodes(config *Config) ([]AddedNode, error)
+	GetConfig() Config
+}
+
+// BitcoinClientImpl represents a client
+type bitcoinClientImpl struct {
 	ClientConfig Config
 	HTTPClient   HTTPClient
 }
 
 // NewClientForConfig creates a client for a given config
-func NewClientForConfig(config *Config) *BitcoinClient {
-	return &BitcoinClient{
+func NewClientForConfig(config *Config) BitcoinClient {
+	return &bitcoinClientImpl{
 		ClientConfig: *config,
 		HTTPClient:   &http.Client{},
 	}
 }
 
 // NewClient creates a client for a given config and a given HTTP client
-func NewClient(config *Config, client HTTPClient) *BitcoinClient {
-	return &BitcoinClient{
+func NewClient(config *Config, client HTTPClient) BitcoinClient {
+	return &bitcoinClientImpl{
 		ClientConfig: *config,
 		HTTPClient:   client,
 	}
 }
 
+// GetConfig returns the config of the client
+func (c *bitcoinClientImpl) GetConfig() Config {
+	return c.ClientConfig
+}
+
 // RawRequest submits a raw request. If config is nil, the configuration from
 // the BitcoinClient is used
-func (c *BitcoinClient) RawRequest(method string, params []string, config *Config) (interface{}, error) {
+func (c *bitcoinClientImpl) RawRequest(method string, params []string, config *Config) (interface{}, error) {
 	var rpcResponse RPCResponse
 	if config == nil {
 		config = &c.ClientConfig
@@ -159,19 +173,19 @@ func (c *BitcoinClient) RawRequest(method string, params []string, config *Confi
 }
 
 // AddNode invokes the addnode RPC method
-func (c *BitcoinClient) AddNode(nodeIP string, config *Config) error {
+func (c *bitcoinClientImpl) AddNode(nodeIP string, config *Config) error {
 	_, err := c.RawRequest("addnode", []string{nodeIP, "add"}, config)
 	return err
 }
 
 // RemoveNode invokes the addnode RPC method
-func (c *BitcoinClient) RemoveNode(nodeIP string, config *Config) error {
+func (c *bitcoinClientImpl) RemoveNode(nodeIP string, config *Config) error {
 	_, err := c.RawRequest("addnode", []string{nodeIP, "remove"}, config)
 	return err
 }
 
 // GetAddedNodes gets the list of added nodes
-func (c *BitcoinClient) GetAddedNodes(config *Config) ([]AddedNode, error) {
+func (c *bitcoinClientImpl) GetAddedNodes(config *Config) ([]AddedNode, error) {
 	rawNodes, err := c.RawRequest("getaddednodeinfo", nil, config)
 	if err != nil {
 		return nil, err
