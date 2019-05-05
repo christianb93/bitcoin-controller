@@ -2,7 +2,7 @@
 
 ## What is it
 
-This repository contains a simple bitcoin controller designed to run on top of Kubernetes. You specify a bitcoin cluster in a YAML manifest file, and the controller will
+This repository contains a simple bitcoin controller designed to run on top of Kubernetes which I created while working on a series of posts on Kubernetes controllers on [my blog](https://leftasexercise.com). You specify a bitcoin cluster in a YAML manifest file, and the controller will
 
 * Start the specified number of bitcoin nodes as Kubernetes pods
 * Monitor your pods and make sure that they are replaced if needed
@@ -60,6 +60,7 @@ Note that this definition refers to the secret created earlier. If you leave the
 ``
 kubectl exec my-network-sts-0 -- /usr/local/bin/bitcoin-cli -conf=/bitcoin.conf -regtest getpeerinfo
 ``
+
 When you inspect the bitcoin network that we have created using, you will also see that the status subresource of the bitcoin network has been populated with a list of the nodes running in the network and that events have been logged by the controller.
 
 ``
