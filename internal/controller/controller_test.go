@@ -12,6 +12,7 @@ import (
 	fakeBitcoin "github.com/christianb93/bitcoin-controller/internal/generated/clientset/versioned/fake"
 	bcinformers "github.com/christianb93/bitcoin-controller/internal/generated/informers/externalversions"
 	secrets "github.com/christianb93/bitcoin-controller/internal/secrets"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -47,7 +48,20 @@ func (f *fakeBitcoinClient) AddNode(nodeIP string, config *bitcoinclient.Config)
 }
 
 func (f *fakeBitcoinClient) RemoveNode(nodeIP string, config *bitcoinclient.Config) error {
-	delete(f.nodeLists, nodeIP)
+	nodeList := f.nodeLists[config.ServerIP]
+	// Remove nodeIP from this list. We do this by rebuilding the node list
+	// while skipping the element in question
+	nodeListCopy := make([]bitcoinclient.AddedNode, 0)
+	for _, node := range nodeList {
+		if node.NodeIP == nodeIP {
+			continue
+		}
+		nodeListCopy = append(nodeListCopy, bitcoinclient.AddedNode{
+			NodeIP:    node.NodeIP,
+			Connected: node.Connected,
+		})
+	}
+	f.nodeLists[config.ServerIP] = nodeListCopy
 	return nil
 }
 
@@ -67,11 +81,12 @@ func alwaysReady() bool {
 // This structure captures some data
 // that we create during test setup
 type testFixture struct {
-	informerFactory informers.SharedInformerFactory
-	controller      *controller.Controller
-	stopCh          chan struct{}
-	client          kubernetes.Interface
-	t               *testing.T
+	informerFactory   informers.SharedInformerFactory
+	bcInformerFactory bcinformers.SharedInformerFactory
+	controller        *controller.Controller
+	stopCh            chan struct{}
+	client            kubernetes.Interface
+	t                 *testing.T
 }
 
 // Create and populate a test network. This function will create a test
@@ -140,11 +155,12 @@ func basicSetup(client kubernetes.Interface, bcClient bitcoinversioned.Interface
 		t.Fatalf("Could not add network to indexer, reason: %s\n", err)
 	}
 	return testFixture{
-		informerFactory: informerFactory,
-		controller:      controller,
-		stopCh:          make(chan struct{}),
-		client:          client,
-		t:               t,
+		informerFactory:   informerFactory,
+		bcInformerFactory: bcInformerFactory,
+		controller:        controller,
+		stopCh:            make(chan struct{}),
+		client:            client,
+		t:                 t,
 	}
 }
 
@@ -163,10 +179,10 @@ func (f *testFixture) stopController() {
 // Wait until work queue is empty
 func (f *testFixture) Wait() {
 	for {
+		time.Sleep(10 * time.Millisecond)
 		if f.controller.IsQueueProcessed() {
 			break
 		}
-		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -413,6 +429,187 @@ func TestUpdateStatusUnit(t *testing.T) {
 	if check["10.0.0.3"] {
 		t.Errorf("Node does not have expected status\n")
 	}
+	fixture.stopController()
+}
+
+// test that without a status change, the controller does not do anything
+func TestSteadyStateUnit(t *testing.T) {
+	bcClient := fakeBitcoin.NewSimpleClientset()
+	client := fakeKubernetes.NewSimpleClientset()
+	fixture := basicSetup(client, bcClient, t)
+	// Inject fake bitcoin controller
+	myFakeBitcoinClient := newFakeBitcoinClient()
+	fixture.controller.SetRPCClient(myFakeBitcoinClient)
+	// Prepare bitcoin client to return an empty node list
+	myFakeBitcoinClient.nodeLists["10.0.0.1"] = []bitcoinclient.AddedNode{}
+	myFakeBitcoinClient.nodeLists["10.0.0.2"] = []bitcoinclient.AddedNode{}
+	myFakeBitcoinClient.nodeLists["10.0.0.3"] = []bitcoinclient.AddedNode{}
+	myNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Could not get test network: %s\n", err)
+	}
+	// Start controller
+	fixture.runController()
+	// now call the Add handler
+	fixture.controller.AddBitcoinNetwork(myNetwork)
+	// and give the worker function some time to grab the update
+	// from the queue
+	fixture.Wait()
+	// make sure that the objects that the
+	// controller has created are moved into the cache
+	fixture.pushObjectsToCache()
+	// clean actions
+	client.ClearActions()
+	bcClient.ClearActions()
+	// run update function
+	fixture.controller.UpdateBitcoinNetwork(myNetwork, myNetwork)
+	fixture.Wait()
+	// we should not see any actions on our kubernetes client
+	if len(client.Actions()) != 0 {
+		t.Error("Found unexpected actions in kubernetes client")
+	}
+	// Stop controller
+	fixture.stopController()
+}
+
+// Test a scale up. We change the number of replicas in the network and
+// verify that the stateful set is updated
+func TestScaleUpUnit(t *testing.T) {
+	bcClient := fakeBitcoin.NewSimpleClientset()
+	client := fakeKubernetes.NewSimpleClientset()
+	fixture := basicSetup(client, bcClient, t)
+	// Inject fake bitcoin controller
+	myFakeBitcoinClient := newFakeBitcoinClient()
+	fixture.controller.SetRPCClient(myFakeBitcoinClient)
+	// Prepare bitcoin client to return an empty node list
+	myFakeBitcoinClient.nodeLists["10.0.0.1"] = []bitcoinclient.AddedNode{}
+	myFakeBitcoinClient.nodeLists["10.0.0.2"] = []bitcoinclient.AddedNode{}
+	myFakeBitcoinClient.nodeLists["10.0.0.3"] = []bitcoinclient.AddedNode{}
+	myNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Could not get test network: %s\n", err)
+	}
+	// Start controller
+	fixture.runController()
+	// now call the Add handler
+	fixture.controller.AddBitcoinNetwork(myNetwork)
+	// and give the worker function some time to grab the update
+	// from the queue
+	fixture.Wait()
+	// make sure that the objects that the
+	// controller has created are moved into the cache
+	fixture.pushObjectsToCache()
+	// Change the bitcoin network - scale up number of nodes
+	myNetworkCopy := myNetwork.DeepCopy()
+	oldNodes := myNetworkCopy.Spec.Nodes
+	newNodes := oldNodes + 1
+	myNetworkCopy.Spec.Nodes = newNodes
+	// also update resource version and generation
+	myNetworkCopy.ObjectMeta.ResourceVersion = "10"
+	myNetworkCopy.ObjectMeta.Generation++
+	// update in indexer
+	fixture.bcInformerFactory.Bitcoincontroller().V1().BitcoinNetworks().Informer().GetIndexer().Update(myNetworkCopy)
+	// and trigger controller
+	fixture.controller.UpdateBitcoinNetwork(myNetwork, myNetworkCopy)
+	fixture.Wait()
+	// Check that number of nodes has been updated in stateful set
+	sts, err := client.AppsV1().StatefulSets("test").Get("unit-test-network-sts", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Could not get stateful set, error is %s\n", err)
+	}
+	if *sts.Spec.Replicas != newNodes {
+		t.Errorf("Found %d replicas, expected %d\n", *sts.Spec.Replicas, newNodes)
+	}
+	// Stop controller
+	fixture.stopController()
+}
+
+// Test a scale down. We change the number of replicas in the network and
+// verify that the stateful set is updated
+func TestScaleDownUnit(t *testing.T) {
+	bcClient := fakeBitcoin.NewSimpleClientset()
+	client := fakeKubernetes.NewSimpleClientset()
+	fixture := basicSetup(client, bcClient, t)
+	// Inject fake bitcoin controller
+	myFakeBitcoinClient := newFakeBitcoinClient()
+	fixture.controller.SetRPCClient(myFakeBitcoinClient)
+	// Prepare bitcoin client to return an empty node list
+	myFakeBitcoinClient.nodeLists["10.0.0.1"] = []bitcoinclient.AddedNode{}
+	myFakeBitcoinClient.nodeLists["10.0.0.2"] = []bitcoinclient.AddedNode{}
+	myFakeBitcoinClient.nodeLists["10.0.0.3"] = []bitcoinclient.AddedNode{}
+	myNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Could not get test network: %s\n", err)
+	}
+	// Start controller
+	fixture.runController()
+	// now call the Add handler
+	fixture.controller.AddBitcoinNetwork(myNetwork)
+	// and give the worker function some time to grab the update
+	// from the queue
+	fixture.Wait()
+	// make sure that the objects that the
+	// controller has created are moved into the cache
+	fixture.pushObjectsToCache()
+	// Change the bitcoin network - scale down number of nodes
+	myNetworkCopy := myNetwork.DeepCopy()
+	oldNodes := myNetworkCopy.Spec.Nodes
+	newNodes := oldNodes - 1
+	myNetworkCopy.Spec.Nodes = newNodes
+	// also update resource version and generation
+	myNetworkCopy.ObjectMeta.ResourceVersion = "10"
+	myNetworkCopy.ObjectMeta.Generation++
+	// update in indexer
+	fixture.bcInformerFactory.Bitcoincontroller().V1().BitcoinNetworks().Informer().GetIndexer().Update(myNetworkCopy)
+	// and trigger controller
+	fixture.controller.UpdateBitcoinNetwork(myNetwork, myNetworkCopy)
+	fixture.Wait()
+	// Check that number of nodes has been updated in stateful set
+	sts, err := client.AppsV1().StatefulSets("test").Get("unit-test-network-sts", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Could not get stateful set, error is %s\n", err)
+	}
+	if *sts.Spec.Replicas != newNodes {
+		t.Errorf("Found %d replicas, expected %d\n", *sts.Spec.Replicas, newNodes)
+	}
+	// Stop controller
+	fixture.stopController()
+}
+
+// Test that unknown nodes are added to the node list of a bitcoin daemon
+func TestNodeListAddUnit(t *testing.T) {
+	bcClient := fakeBitcoin.NewSimpleClientset()
+	client := fakeKubernetes.NewSimpleClientset()
+	fixture := basicSetup(client, bcClient, t)
+	// Inject fake bitcoin controller
+	myFakeBitcoinClient := newFakeBitcoinClient()
+	fixture.controller.SetRPCClient(myFakeBitcoinClient)
+	// Prepare bitcoin client to return an empty node list
+	myFakeBitcoinClient.nodeLists["10.0.0.1"] = []bitcoinclient.AddedNode{}
+	myFakeBitcoinClient.nodeLists["10.0.0.2"] = []bitcoinclient.AddedNode{}
+	myFakeBitcoinClient.nodeLists["10.0.0.3"] = []bitcoinclient.AddedNode{}
+	myNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Could not get test network: %s\n", err)
+	}
+	// Start controller
+	fixture.runController()
+	// now call the Add handler
+	fixture.controller.AddBitcoinNetwork(myNetwork)
+	// and give the worker function some time to grab the update
+	// from the queue
+	fixture.Wait()
+	// make sure that the objects that the
+	// controller has created are moved into the cache
+	fixture.pushObjectsToCache()
+	// Now create two pods - two being ready, one not
+	fixture.createPod("unit-test-network-sts-0", "10.0.0.1", true, t)
+	fixture.createPod("unit-test-network-sts-1", "10.0.0.2", true, t)
+	// and run update function
+	client.ClearActions()
+	bcClient.ClearActions()
+	fixture.controller.UpdateBitcoinNetwork(myNetwork, myNetwork)
+	fixture.Wait()
 	// Now verify that the node lists have actually been updated
 	if len(myFakeBitcoinClient.nodeLists["10.0.0.1"]) != 1 {
 		t.Errorf("Node 10.0.0.1 has unexpected number %d of added nodes\n", len(myFakeBitcoinClient.nodeLists["10.0.0.1"]))
@@ -426,10 +623,158 @@ func TestUpdateStatusUnit(t *testing.T) {
 	if myFakeBitcoinClient.nodeLists["10.0.0.2"][0].NodeIP != "10.0.0.1" {
 		t.Errorf("Node 10.0.0.2 has incorrect node %s in its added node list\n", myFakeBitcoinClient.nodeLists["10.0.0.1"][0].NodeIP)
 	}
+	// stop controller
+	fixture.stopController()
 }
 
-// Additional testcases TBD:
-// test events
-// test scale up and down
-// test change of stateful set
-// if deletion timestamp is set updates will be ignored
+// Test that nodes which are no longer ready are removed from the node list
+// of the bitcoin daemons
+func TestNodeListRemoveUnit(t *testing.T) {
+	bcClient := fakeBitcoin.NewSimpleClientset()
+	client := fakeKubernetes.NewSimpleClientset()
+	fixture := basicSetup(client, bcClient, t)
+	// Inject fake bitcoin controller
+	myFakeBitcoinClient := newFakeBitcoinClient()
+	fixture.controller.SetRPCClient(myFakeBitcoinClient)
+	myNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Could not get test network: %s\n", err)
+	}
+	// Start controller
+	fixture.runController()
+	// now call the Add handler
+	fixture.controller.AddBitcoinNetwork(myNetwork)
+	// and give the worker function some time to grab the update
+	// from the queue
+	fixture.Wait()
+	// make sure that the objects that the
+	// controller has created are moved into the cache
+	fixture.pushObjectsToCache()
+	// Now create two pods
+	fixture.createPod("unit-test-network-sts-0", "10.0.0.1", true, t)
+	fixture.createPod("unit-test-network-sts-1", "10.0.0.2", true, t)
+	// Prepare bitcoin client to return a node list with three pods
+	// 10.0.0.1 is connected to 10.0.0.2 and 10.0.0.3
+	myFakeBitcoinClient.nodeLists["10.0.0.1"] = []bitcoinclient.AddedNode{
+		bitcoinclient.AddedNode{
+			NodeIP:    "10.0.0.2",
+			Connected: true,
+		},
+		bitcoinclient.AddedNode{
+			NodeIP:    "10.0.0.3",
+			Connected: true,
+		},
+	}
+	// 10.0.0.2 is connected to 10.0.0.1 and 10.0.0.3
+	myFakeBitcoinClient.nodeLists["10.0.0.2"] = []bitcoinclient.AddedNode{
+		bitcoinclient.AddedNode{
+			NodeIP:    "10.0.0.1",
+			Connected: true,
+		},
+		bitcoinclient.AddedNode{
+			NodeIP:    "10.0.0.3",
+			Connected: true,
+		},
+	}
+	// 10.0.0.3 is connected to 10.0.0.1 and 10.0.0.2
+	myFakeBitcoinClient.nodeLists["10.0.0.3"] = []bitcoinclient.AddedNode{
+		bitcoinclient.AddedNode{
+			NodeIP:    "10.0.0.1",
+			Connected: true,
+		},
+		bitcoinclient.AddedNode{
+			NodeIP:    "10.0.0.2",
+			Connected: true,
+		},
+	}
+	// and run update function. This should remove the node 10.0.0.3 from all node lists
+	client.ClearActions()
+	bcClient.ClearActions()
+	fixture.controller.UpdateBitcoinNetwork(myNetwork, myNetwork)
+	fixture.Wait()
+	// Now verify that the node lists have actually been updated
+	if len(myFakeBitcoinClient.nodeLists["10.0.0.1"]) != 1 {
+		t.Errorf("Node 10.0.0.1 has unexpected number %d of added nodes\n", len(myFakeBitcoinClient.nodeLists["10.0.0.1"]))
+	}
+	if myFakeBitcoinClient.nodeLists["10.0.0.1"][0].NodeIP != "10.0.0.2" {
+		t.Errorf("Node 10.0.0.1 has incorrect node %s in its added node list\n", myFakeBitcoinClient.nodeLists["10.0.0.1"][0].NodeIP)
+	}
+	if len(myFakeBitcoinClient.nodeLists["10.0.0.2"]) != 1 {
+		t.Errorf("Node 10.0.0.2 has unexpected number %d of added nodes\n", len(myFakeBitcoinClient.nodeLists["10.0.0.1"]))
+	}
+	if myFakeBitcoinClient.nodeLists["10.0.0.2"][0].NodeIP != "10.0.0.1" {
+		t.Errorf("Node 10.0.0.2 has incorrect node %s in its added node list\n", myFakeBitcoinClient.nodeLists["10.0.0.1"][0].NodeIP)
+	}
+	// stop controller
+	fixture.stopController()
+}
+
+// Test that a stateful set is fixed again if it is modified
+func TestStatefulSetModificationUnit(t *testing.T) {
+	bcClient := fakeBitcoin.NewSimpleClientset()
+	client := fakeKubernetes.NewSimpleClientset()
+	fixture := basicSetup(client, bcClient, t)
+	// Inject fake bitcoin controller
+	myFakeBitcoinClient := newFakeBitcoinClient()
+	fixture.controller.SetRPCClient(myFakeBitcoinClient)
+	myNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Could not get test network: %s\n", err)
+	}
+	// Start controller
+	fixture.runController()
+	// now call the Add handler
+	fixture.controller.AddBitcoinNetwork(myNetwork)
+	// and give the worker function some time to grab the update
+	// from the queue
+	fixture.Wait()
+	// make sure that the objects that the
+	// controller has created are moved into the cache
+	fixture.pushObjectsToCache()
+	// Now change the stateful set in the cache by setting its replica to 10
+	sts, err := client.AppsV1().StatefulSets("test").Get("unit-test-network-sts", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Could not retrieve stateful set, error is %s\n", err)
+	}
+	stsCopy := sts.DeepCopy()
+	stsCopy.ObjectMeta.ResourceVersion = "10"
+	stsCopy.ObjectMeta.Generation++
+	*stsCopy.Spec.Replicas = int32(100)
+	_, err = client.AppsV1().StatefulSets("test").Update(stsCopy)
+	if err != nil {
+		t.Fatalf("Could not update stateful set %s\n", err)
+	}
+	fixture.pushObjectsToCache()
+	// Check that we really have 100 now - both in the fake clientset as well as in the cache. Only then
+	// will our test be valid
+	checkSts, err := client.AppsV1().StatefulSets("test").Get("unit-test-network-sts", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Could not retrieve updated stateful set from fake client, err is %s\n", err)
+	}
+	if *checkSts.Spec.Replicas != *stsCopy.Spec.Replicas {
+		t.Fatal("Changed number of replicas did not make it into fake client - test setup flawed?")
+	}
+	check, exists, err := fixture.informerFactory.Apps().V1().StatefulSets().Informer().GetIndexer().Get(checkSts)
+	if err != nil || !exists {
+		t.Fatalf("Could not get updated stateful set from cache, err = %s\n", err)
+	}
+	checkSts, ok := check.(*appsv1.StatefulSet)
+	if !ok {
+		t.Fatal("This is not a stateful set!")
+	}
+	if *checkSts.Spec.Replicas != *stsCopy.Spec.Replicas {
+		t.Fatalf("Changed number of replicas did not make it into cache - test setup flawed? Have %d, expected %d\n", *checkSts.Spec.Replicas, *stsCopy.Spec.Replicas)
+	}
+	// Now call update function
+	fixture.controller.UpdateObject(sts, stsCopy)
+	fixture.Wait()
+	// Verify that the controller has changed the replica number back to 3
+	sts, err = client.AppsV1().StatefulSets("test").Get("unit-test-network-sts", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Could not retrieve stateful set, error is %s\n", err)
+	}
+	if *sts.Spec.Replicas != myNetwork.Spec.Nodes {
+		t.Errorf("Have wrong replicas in stateful set: have %d, expected %d\n", *sts.Spec.Replicas, myNetwork.Spec.Nodes)
+	}
+	fixture.stopController()
+}

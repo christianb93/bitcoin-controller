@@ -16,8 +16,8 @@ const (
 // RPCError is an error returned by the bitcoind which implements the
 // error interface
 type RPCError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Code    int    `json:"code,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 func (e RPCError) Error() string {
@@ -70,7 +70,7 @@ type RPCRequest struct {
 // RPCResponse holds a response from the RPC client
 type RPCResponse struct {
 	Result interface{} `json:"result"`
-	Error  RPCError    `json:"error"`
+	Error  RPCError    `json:"error,omitempty"`
 	ID     string      `json:"id"`
 }
 
