@@ -26,6 +26,7 @@ echo "Starting test run at $startTime"
 #
 bitcoind=$(docker run --rm -p 18332:18332 -d christianb93/bitcoind:latest)
 echo "Started dockerized bitcoin daemon $bitcoind"
+date
 #
 # Now start a new cluster
 #
@@ -38,6 +39,7 @@ else
   kubeconfig=$(kind get kubeconfig-path --name=bitcoind-test)
 fi
 echo "Using kubeconfig file at $kubeconfig"
+date
 #
 # Install CRD, secrets and RBAC profile
 #
