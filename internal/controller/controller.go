@@ -263,7 +263,7 @@ func (c *Controller) createStatefulSet(bcNetwork *bcv1.BitcoinNetwork, stsName s
 					Containers: []corev1.Container{
 						corev1.Container{
 							Name:            stsName + "-ctr",
-							Image:           "christianb93/bitcoind:latest",
+							Image:           "christianb93/bitcoind:v1.0",
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							ReadinessProbe: &corev1.Probe{
 								InitialDelaySeconds: 5,

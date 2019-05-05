@@ -67,10 +67,10 @@ sleep 5
 echo "Pre-pulling bitcoind image"
 if [ $driver == "minikube" ]; then
   # Build for minikube. We create a docker image directly in the docker daemon running in the minikube VM
-  minikube -p bitcoind-test ssh 'docker pull christianb93/bitcoind:latest'
+  minikube -p bitcoind-test ssh 'docker pull christianb93/bitcoind:v1.0'
 else
-  docker pull christianb93/bitcoind:latest
-  kind load docker-image christianb93/bitcoind:latest --name=bitcoind-test
+  docker pull christianb93/bitcoind:v1.0
+  kind load docker-image christianb93/bitcoind:v1.0 --name=bitcoind-test
 fi
 
 date
