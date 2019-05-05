@@ -14,6 +14,7 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -62,7 +63,6 @@ func waitForPodsReady(target int32, networkName string, client versionedv1.Bitco
 			break
 		}
 		time.Sleep(5 * time.Second)
-		t.Logf("Waiting for number of ready pods in network %s to reach %d, current count is %d\n", networkName, target, readyNodes)
 		count = count + 1
 		if count*5 > timeout {
 			t.Errorf("Timeout while waiting for target state of network %s, readyNodes is now %d\n", networkName, readyNodes)
@@ -70,9 +70,19 @@ func waitForPodsReady(target int32, networkName string, client versionedv1.Bitco
 	}
 }
 
+func getKubeConfig() string {
+	kubeconfig := os.Getenv("KUBECONFIG")
+	if kubeconfig == "" {
+		home := homedir.HomeDir()
+		kubeconfig = filepath.Join(home, ".kube", "config")
+	}
+	return kubeconfig
+}
+
 // Use kubectl locally to run the bitcoin client on a node and get its JSON output
 func runLocalClient(podName string, method string, t *testing.T) []byte {
-	cmd := exec.Command("kubectl", "exec", podName, "--", "/usr/local/bin/bitcoin-cli", "-regtest", "-conf=/bitcoin.conf", method)
+	kubeconfig := getKubeConfig()
+	cmd := exec.Command("kubectl", "--kubeconfig="+kubeconfig, "exec", podName, "--", "/usr/local/bin/bitcoin-cli", "-regtest", "-conf=/bitcoin.conf", method)
 	output, err := cmd.Output()
 	if err != nil {
 		t.Errorf("Execution of kubectl failed, reason %s (%T)\n", err, err)
@@ -88,15 +98,13 @@ func getAddedNodeList(podName string, t *testing.T) []AddedNode {
 	// Run kubectl to connect to node
 	output := runLocalClient(podName, "getaddednodeinfo", t)
 	// Now parse output
-	t.Logf("Output ouf call to kubectl on node %s: %s\n", podName, string(output))
 	v := make([]AddedNode, 0)
 	json.Unmarshal(output, &v)
 	return v
 }
 
 func TestClientsetCreationIntegration(t *testing.T) {
-	home := homedir.HomeDir()
-	kubeconfig := filepath.Join(home, ".kube", "config")
+	kubeconfig := getKubeConfig()
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		t.Error("Could not get configuration file")
@@ -111,8 +119,7 @@ func TestClientsetCreationIntegration(t *testing.T) {
 }
 
 func TestClientsetListIntegration(t *testing.T) {
-	home := homedir.HomeDir()
-	kubeconfig := filepath.Join(home, ".kube", "config")
+	kubeconfig := getKubeConfig()
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		t.Errorf("Could not get configuration file\n")
@@ -136,8 +143,7 @@ func TestClientsetListIntegration(t *testing.T) {
 }
 
 func TestLifecycleCreateIntegration(t *testing.T) {
-	home := homedir.HomeDir()
-	kubeconfig := filepath.Join(home, ".kube", "config")
+	kubeconfig := getKubeConfig()
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		panic("Could not get configuration file")
@@ -179,9 +185,8 @@ func TestLifecycleCreateIntegration(t *testing.T) {
 	}
 }
 
-func TestLifecyclePodGenerationIntegration(t *testing.T) {
-	home := homedir.HomeDir()
-	kubeconfig := filepath.Join(home, ".kube", "config")
+func TestLifecyclePodCreationIntegration(t *testing.T) {
+	kubeconfig := getKubeConfig()
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		panic("Could not get configuration file")
@@ -208,7 +213,6 @@ func TestLifecycleConnectivityIntegration(t *testing.T) {
 	// Wait for five more seconds, just to make sure that the full
 	// sync lifecycle could complete
 	time.Sleep(5 * time.Second)
-	t.Log("Checking connectivity")
 	for pod := 0; pod < numberOfNodes; pod++ {
 		podName := testNetworkName + "-sts-" + strconv.Itoa(pod)
 		addedNodeList := getAddedNodeList(podName, t)
@@ -222,8 +226,7 @@ func TestLifecycleConnectivityIntegration(t *testing.T) {
 // added when we scale our network
 func TestLifecycleScaleUpIntegration(t *testing.T) {
 	// First get access to network
-	home := homedir.HomeDir()
-	kubeconfig := filepath.Join(home, ".kube", "config")
+	kubeconfig := getKubeConfig()
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		panic("Could not get configuration file")
@@ -271,8 +274,7 @@ func TestLifecycleScaleUpIntegration(t *testing.T) {
 // Test scale down
 func TestLifecycleScaleDownIntegration(t *testing.T) {
 	// First get access to network
-	home := homedir.HomeDir()
-	kubeconfig := filepath.Join(home, ".kube", "config")
+	kubeconfig := getKubeConfig()
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		panic("Could not get configuration file")
@@ -311,7 +313,7 @@ func TestLifecycleScaleDownIntegration(t *testing.T) {
 	// wait until we reached the reduced pod count
 	waitForPodsReady(numberOfNodes, myNetwork.Name, client, t, 60)
 	// Now check that a node has been removed again
-	time.Sleep(5 * time.Second)
+	time.Sleep(2 * time.Second)
 	for pod := 0; pod < numberOfNodes; pod++ {
 		podName := testNetworkName + "-sts-" + strconv.Itoa(pod)
 		addedNodeList := getAddedNodeList(podName, t)
@@ -323,8 +325,7 @@ func TestLifecycleScaleDownIntegration(t *testing.T) {
 
 // Test deletion of the entire network
 func TestLifecycleDeleteIntegration(t *testing.T) {
-	home := homedir.HomeDir()
-	kubeconfig := filepath.Join(home, ".kube", "config")
+	kubeconfig := getKubeConfig()
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		t.Fatal("Could not get configuration file")
@@ -365,10 +366,9 @@ func TestLifecycleDeleteIntegration(t *testing.T) {
 		if err != nil {
 			break
 		}
-		time.Sleep(5 * time.Second)
-		t.Log("Waiting for last pod to go down\n")
+		time.Sleep(1 * time.Second)
 		count = count + 1
-		if count*5 > 60 {
+		if count > 60 {
 			t.Error("Timeout while waiting for last pod to go down")
 		}
 	}

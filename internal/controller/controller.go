@@ -102,6 +102,12 @@ func (c *Controller) SetRPCClient(rpcClient bitcoinclient.BitcoinClient) {
 	c.rpcClient = rpcClient
 }
 
+// IsQueueProcessed returns true if there are no unprocessed items in the
+// queue. Mainly used for testing
+func (c *Controller) IsQueueProcessed() bool {
+	return c.workqueue.Len() == 0
+}
+
 // NewController creates a new bitcoin controller
 func NewController(bitcoinNetworkInformer bcInformers.BitcoinNetworkInformer,
 	stsInformer appsv1Informers.StatefulSetInformer,
@@ -260,7 +266,8 @@ func (c *Controller) createStatefulSet(bcNetwork *bcv1.BitcoinNetwork, stsName s
 							Image:           "christianb93/bitcoind:latest",
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							ReadinessProbe: &corev1.Probe{
-								InitialDelaySeconds: 10,
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       5,
 								Handler: corev1.Handler{
 									Exec: &corev1.ExecAction{
 										Command: []string{"/usr/local/bin/bitcoin-cli",

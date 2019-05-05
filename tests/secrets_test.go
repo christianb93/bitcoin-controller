@@ -1,7 +1,6 @@
 package main
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/christianb93/bitcoin-controller/internal/secrets"
@@ -9,13 +8,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
 )
 
 // TestCredentialsForSecretIntegration tests retrieving a secret with credentials
 func TestCredentialForSecretIntegration(t *testing.T) {
-	home := homedir.HomeDir()
-	kubeconfig := filepath.Join(home, ".kube", "config")
+	kubeconfig := getKubeConfig()
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		panic("Could not get configuration file")

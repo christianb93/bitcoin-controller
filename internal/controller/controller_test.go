@@ -17,8 +17,6 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	fakeKubernetes "k8s.io/client-go/kubernetes/fake"
-	k8stesting "k8s.io/client-go/testing"
-	"k8s.io/client-go/tools/cache"
 )
 
 // This is a fake bitcoin client
@@ -66,41 +64,19 @@ func alwaysReady() bool {
 	return true
 }
 
-// Test creation of a new controller
-func TestControllerCreationUnit(t *testing.T) {
-	bcClient := fakeBitcoin.NewSimpleClientset()
-	client := fakeKubernetes.NewSimpleClientset()
-	bcInformerFactory := bcinformers.NewSharedInformerFactory(bcClient, time.Second*30)
-	if bcInformerFactory == nil {
-		t.Fatal("Could not create BitcoinNetwork informer factory\n")
-	}
-	// Create an informer factory for stateful sets
-	informerFactory := informers.NewSharedInformerFactory(client, time.Second*30)
-	if informerFactory == nil {
-		t.Fatal("Could not create informer factory\n")
-	}
-	controller := controller.NewController(
-		bcInformerFactory.Bitcoincontroller().V1().BitcoinNetworks(),
-		informerFactory.Apps().V1().StatefulSets(),
-		informerFactory.Core().V1().Services(),
-		informerFactory.Core().V1().Pods(),
-		client,
-		bcClient,
-	)
-	if controller == nil {
-		t.Fatal("Could not create controller")
-	}
-}
-
 // This structure captures some data
 // that we create during test setup
-type testSetup struct {
+type testFixture struct {
 	informerFactory informers.SharedInformerFactory
+	controller      *controller.Controller
+	stopCh          chan struct{}
+	client          kubernetes.Interface
+	t               *testing.T
 }
 
 // Create and populate a test network. This function will create a test
 // bitcoin network, a matching secret and a controller
-func basicSetup(client kubernetes.Interface, bcClient bitcoinversioned.Interface, t *testing.T) (*controller.Controller, testSetup) {
+func basicSetup(client kubernetes.Interface, bcClient bitcoinversioned.Interface, t *testing.T) testFixture {
 	// Create an informer factory for stateful sets
 	informerFactory := informers.NewSharedInformerFactory(client, time.Second*30)
 	if informerFactory == nil {
@@ -163,7 +139,148 @@ func basicSetup(client kubernetes.Interface, bcClient bitcoinversioned.Interface
 	if err != nil {
 		t.Fatalf("Could not add network to indexer, reason: %s\n", err)
 	}
-	return controller, testSetup{informerFactory: informerFactory}
+	return testFixture{
+		informerFactory: informerFactory,
+		controller:      controller,
+		stopCh:          make(chan struct{}),
+		client:          client,
+		t:               t,
+	}
+}
+
+// Run the controller
+func (f *testFixture) runController() {
+	// Start controller. This will block the current thread,
+	// so we do this in a go-routine
+	go f.controller.Run(f.stopCh, 1)
+}
+
+// Stop the controller
+func (f *testFixture) stopController() {
+	close(f.stopCh)
+}
+
+// Wait until work queue is empty
+func (f *testFixture) Wait() {
+	for {
+		if f.controller.IsQueueProcessed() {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// Make sure that all objects known to the client are also
+// in the informer cache
+func (f *testFixture) pushObjectsToCache() {
+	// Start with stateful sets. We first call Replace on the indexer so that it
+	// will be empty
+	f.informerFactory.Apps().V1().StatefulSets().Informer().GetIndexer().Replace(make([]interface{}, 0), "1")
+	stsList, err := f.client.AppsV1().StatefulSets("test").List(metav1.ListOptions{})
+	if err != nil {
+		f.t.Fatalf("Unexpected error %s\n", err)
+	}
+	for _, sts := range stsList.Items {
+		err = f.informerFactory.Apps().V1().StatefulSets().Informer().GetIndexer().Add(&sts)
+		if err != nil {
+			f.t.Fatalf("Unexpected error %s\n", err)
+		}
+	}
+	// Do the same for services
+	f.informerFactory.Core().V1().Services().Informer().GetIndexer().Replace(make([]interface{}, 0), "1")
+	svcList, err := f.client.CoreV1().Services("test").List(metav1.ListOptions{})
+	if err != nil {
+		f.t.Fatalf("Unexpected error %s\n", err)
+	}
+	for _, svc := range svcList.Items {
+		err = f.informerFactory.Core().V1().Services().Informer().GetIndexer().Add(&svc)
+		if err != nil {
+			f.t.Fatalf("Unexpected error %s\n", err)
+		}
+	}
+	// and pods
+	f.informerFactory.Core().V1().Pods().Informer().GetIndexer().Replace(make([]interface{}, 0), "1")
+	podList, err := f.client.CoreV1().Pods("test").List(metav1.ListOptions{})
+	if err != nil {
+		f.t.Fatalf("Unexpected error %s\n", err)
+	}
+	for _, pod := range podList.Items {
+		fmt.Printf("Adding pod %s in namespace %s to indexer\n", pod.Name, pod.Namespace)
+		err = f.informerFactory.Core().V1().Pods().Informer().GetIndexer().Add(&pod)
+		if err != nil {
+			f.t.Fatalf("Unexpected error %s\n", err)
+		}
+		// Verify that the pod has arrived in the lister
+		check, err := f.informerFactory.Core().V1().Pods().Lister().Pods(pod.Namespace).Get(pod.Name)
+		if err != nil && check == nil {
+			f.t.Fatalf("Could not retrieve pod that I have just added: %s\n", err)
+		}
+
+	}
+}
+
+// Helper function to create a pod and add it to a store
+func (f *testFixture) createPod(name string, ip string, ready bool, t *testing.T) *corev1.Pod {
+	condition := corev1.ConditionTrue
+	if !ready {
+		condition = corev1.ConditionFalse
+	}
+	pod := &corev1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Pod",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "test"},
+		Spec: corev1.PodSpec{},
+		Status: corev1.PodStatus{
+			Conditions: []corev1.PodCondition{
+				corev1.PodCondition{
+					Type:   corev1.PodReady,
+					Status: condition,
+				},
+			},
+			PodIP: ip,
+		},
+	}
+	store := f.informerFactory.Core().V1().Pods().Informer().GetIndexer()
+	err := store.Add(pod)
+	if err != nil {
+		t.Fatalf("Unexpected error %s\n", err)
+	}
+	// and add pod to client
+	_, err = f.client.CoreV1().Pods("test").Create(pod)
+	if err != nil {
+		t.Fatalf("Unexpected error %s\n", err)
+	}
+	return pod
+}
+
+// Test creation of a new controller
+func TestControllerCreationUnit(t *testing.T) {
+	bcClient := fakeBitcoin.NewSimpleClientset()
+	client := fakeKubernetes.NewSimpleClientset()
+	bcInformerFactory := bcinformers.NewSharedInformerFactory(bcClient, time.Second*30)
+	if bcInformerFactory == nil {
+		t.Fatal("Could not create BitcoinNetwork informer factory\n")
+	}
+	// Create an informer factory for stateful sets
+	informerFactory := informers.NewSharedInformerFactory(client, time.Second*30)
+	if informerFactory == nil {
+		t.Fatal("Could not create informer factory\n")
+	}
+	controller := controller.NewController(
+		bcInformerFactory.Bitcoincontroller().V1().BitcoinNetworks(),
+		informerFactory.Apps().V1().StatefulSets(),
+		informerFactory.Core().V1().Services(),
+		informerFactory.Core().V1().Pods(),
+		client,
+		bcClient,
+	)
+	if controller == nil {
+		t.Fatal("Could not create controller")
+	}
 }
 
 // Test add  handler. We invoke this handler to simulate the scenario that a
@@ -172,20 +289,18 @@ func basicSetup(client kubernetes.Interface, bcClient bitcoinversioned.Interface
 func TestAddHandlerUnit(t *testing.T) {
 	bcClient := fakeBitcoin.NewSimpleClientset()
 	client := fakeKubernetes.NewSimpleClientset()
-	controller, _ := basicSetup(client, bcClient, t)
-	// Start controller. This will block the current thread,
-	// so we do this in a go-routine
-	stopCh := make(chan struct{})
-	go controller.Run(stopCh, 1)
+	fixture := basicSetup(client, bcClient, t)
 	// call the AddHandler as the informer would do it
 	myNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Unexpected error %s\n", err)
 	}
-	controller.AddBitcoinNetwork(myNetwork)
+	fixture.controller.AddBitcoinNetwork(myNetwork)
+	// Run controller
+	fixture.runController()
 	// and give the worker function some time to grab the update
 	// from the queue
-	time.Sleep(1 * time.Second)
+	fixture.Wait()
 	// Now verify that a stateful set and a service have been created
 	// in the namespace test
 	sts, err := client.AppsV1().StatefulSets("test").Get("unit-test-network-sts", metav1.GetOptions{})
@@ -229,49 +344,17 @@ func TestAddHandlerUnit(t *testing.T) {
 	if svc.Spec.ClusterIP != "None" {
 		t.Errorf("Expected headless service, but found clusterIP %s\n", svc.Spec.ClusterIP)
 	}
-	close(stopCh)
-}
-
-// Helper function to create a pod and add it to a store
-func createPod(store cache.Store, name string, ip string, ready bool, t *testing.T) *corev1.Pod {
-	condition := corev1.ConditionTrue
-	if !ready {
-		condition = corev1.ConditionFalse
-	}
-	pod := &corev1.Pod{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Pod",
-			APIVersion: "v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "test"},
-		Spec: corev1.PodSpec{},
-		Status: corev1.PodStatus{
-			Conditions: []corev1.PodCondition{
-				corev1.PodCondition{
-					Type:   corev1.PodReady,
-					Status: condition,
-				},
-			},
-			PodIP: ip,
-		},
-	}
-	err := store.Add(pod)
-	if err != nil {
-		t.Fatalf("Unexpected error %s\n", err)
-	}
-	return pod
+	fixture.stopController()
 }
 
 // Test that the status field is correctly maintained
 func TestUpdateStatusUnit(t *testing.T) {
 	bcClient := fakeBitcoin.NewSimpleClientset()
 	client := fakeKubernetes.NewSimpleClientset()
-	controller, testSetup := basicSetup(client, bcClient, t)
+	fixture := basicSetup(client, bcClient, t)
 	// Inject fake bitcoin controller
 	myFakeBitcoinClient := newFakeBitcoinClient()
-	controller.SetRPCClient(myFakeBitcoinClient)
+	fixture.controller.SetRPCClient(myFakeBitcoinClient)
 	// Prepare bitcoin client to return an empty node list
 	myFakeBitcoinClient.nodeLists["10.0.0.1"] = []bitcoinclient.AddedNode{}
 	myFakeBitcoinClient.nodeLists["10.0.0.2"] = []bitcoinclient.AddedNode{}
@@ -282,15 +365,16 @@ func TestUpdateStatusUnit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not get test network: %s\n", err)
 	}
-	// Start controller. This will block the current thread,
-	// so we do this in a go-routine
-	stopCh := make(chan struct{})
-	go controller.Run(stopCh, 1)
+	// Start controller
+	fixture.runController()
 	// now call the Add handler
-	controller.AddBitcoinNetwork(myNetwork)
+	fixture.controller.AddBitcoinNetwork(myNetwork)
 	// and give the worker function some time to grab the update
 	// from the queue
-	time.Sleep(1 * time.Second)
+	fixture.Wait()
+	// make sure that the objects that the
+	// controller has created are moved into the cache
+	fixture.pushObjectsToCache()
 	// at this point, there are no pods, so the status should still be empty
 	bcNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
 	if err != nil {
@@ -300,14 +384,14 @@ func TestUpdateStatusUnit(t *testing.T) {
 		t.Errorf("Got unexpected number of nodes %d, should be zero as there are no pods yet\n", len(bcNetwork.Status.Nodes))
 	}
 	// Now create three pods - two being ready, one not
-	createPod(testSetup.informerFactory.Core().V1().Pods().Informer().GetIndexer(), "unit-test-network-sts-0", "10.0.0.1", true, t)
-	createPod(testSetup.informerFactory.Core().V1().Pods().Informer().GetIndexer(), "unit-test-network-sts-1", "10.0.0.2", true, t)
-	createPod(testSetup.informerFactory.Core().V1().Pods().Informer().GetIndexer(), "unit-test-network-sts-2", "10.0.0.3", false, t)
+	fixture.createPod("unit-test-network-sts-0", "10.0.0.1", true, t)
+	fixture.createPod("unit-test-network-sts-1", "10.0.0.2", true, t)
+	fixture.createPod("unit-test-network-sts-2", "10.0.0.3", false, t)
 	// and run update function
 	client.ClearActions()
 	bcClient.ClearActions()
-	controller.UpdateBitcoinNetwork(bcNetwork, bcNetwork)
-	time.Sleep(1 * time.Second)
+	fixture.controller.UpdateBitcoinNetwork(bcNetwork, bcNetwork)
+	fixture.Wait()
 	// Now check status
 	bcNetwork, err = bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
 	if err != nil {
@@ -341,28 +425,6 @@ func TestUpdateStatusUnit(t *testing.T) {
 	}
 	if myFakeBitcoinClient.nodeLists["10.0.0.2"][0].NodeIP != "10.0.0.1" {
 		t.Errorf("Node 10.0.0.2 has incorrect node %s in its added node list\n", myFakeBitcoinClient.nodeLists["10.0.0.1"][0].NodeIP)
-	}
-	// We expect to see one UpdateStatus action to set the number of nodes to three with subresource = status
-	found := false
-	for _, action := range bcClient.Actions() {
-		updateStatusAction, ok := action.(k8stesting.UpdateAction)
-		if ok {
-			obj := updateStatusAction.GetObject()
-			if obj != nil {
-				bcNetwork, ok := obj.(*bitcoinv1.BitcoinNetwork)
-				if ok {
-					if bcNetwork.Name != "unit-test-network" {
-						t.Errorf("Got unexpected name %s for bitcoin network\n", bcNetwork.Name)
-					}
-					if len(bcNetwork.Status.Nodes) == 3 && action.GetSubresource() == "status" {
-						found = true
-					}
-				}
-			}
-		}
-	}
-	if !found {
-		t.Error("Could not identify expected action to update the status")
 	}
 }
 

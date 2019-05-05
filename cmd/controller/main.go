@@ -66,7 +66,7 @@ func main() {
 	}
 	klog.Info("Creating shared informer")
 	// Create an informer factory for BitcoinNetwork objects
-	bcInformerFactory := bcinformers.NewSharedInformerFactory(bcClient, time.Second*30)
+	bcInformerFactory := bcinformers.NewSharedInformerFactory(bcClient, time.Second*15)
 	if bcInformerFactory == nil {
 		panic("Could not create BitcoinNetwork informer factory\n")
 	}
