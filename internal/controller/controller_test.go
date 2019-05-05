@@ -2,6 +2,7 @@ package controller_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,6 +77,26 @@ func (f *fakeBitcoinClient) GetConfig() bitcoinclient.Config {
 // a fake synced function
 func alwaysReady() bool {
 	return true
+}
+
+// Fake event sink
+type fakeEventSink struct {
+	eventList []corev1.Event
+}
+
+func (f *fakeEventSink) Create(event *corev1.Event) (*corev1.Event, error) {
+	f.eventList = append(f.eventList, *event)
+	return event, nil
+}
+
+func (f *fakeEventSink) Update(event *corev1.Event) (*corev1.Event, error) {
+	// Not implemented
+	return event, nil
+}
+
+func (f *fakeEventSink) Patch(oldEvent *corev1.Event, data []byte) (*corev1.Event, error) {
+	// not implemented
+	return oldEvent, nil
 }
 
 // This structure captures some data
@@ -745,6 +766,54 @@ func TestStatefulSetModificationUnit(t *testing.T) {
 	}
 	if *sts.Spec.Replicas != myNetwork.Spec.Nodes {
 		t.Errorf("Have wrong replicas in stateful set: have %d, expected %d\n", *sts.Spec.Replicas, myNetwork.Spec.Nodes)
+	}
+	fixture.stopController()
+}
+
+// Test that an event is written if a stateful set and the service for a
+// bitcoin network are created
+func TestCreationEventsUnit(t *testing.T) {
+	bcClient := fakeBitcoin.NewSimpleClientset()
+	client := fakeKubernetes.NewSimpleClientset()
+	fixture := basicSetup(client, bcClient, t)
+	myNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Could not get test network: %s\n", err)
+	}
+	// Inject fake event sink
+	myFakeEventSink := &fakeEventSink{}
+	fixture.controller.AddEventSink(myFakeEventSink)
+	// Start controller
+	fixture.runController()
+	// now call the Add handler
+	fixture.controller.AddBitcoinNetwork(myNetwork)
+	// and give the worker function some time to grab the update
+	// from the queue
+	fixture.Wait()
+	// this should have emitted two events
+	if len(myFakeEventSink.eventList) != 2 {
+		t.Errorf("Have %d events in sink, expected %d\n", len(myFakeEventSink.eventList), 2)
+	}
+	stsEventFound := false
+	svcEventFound := false
+	for _, event := range myFakeEventSink.eventList {
+		if event.Reason != "Info" {
+			t.Errorf("Unexpected event type %s\n", event.Reason)
+		}
+		if event.InvolvedObject.Kind == "BitcoinNetwork" {
+			if strings.Contains(event.Message, "service") {
+				svcEventFound = true
+			}
+			if strings.Contains(event.Message, "stateful set") {
+				stsEventFound = true
+			}
+		}
+	}
+	if !stsEventFound {
+		t.Error("Could not find event signaling creation of stateful set")
+	}
+	if !svcEventFound {
+		t.Error("Could not find event signaling creation of headless service set")
 	}
 	fixture.stopController()
 }
