@@ -86,6 +86,7 @@ type testFixture struct {
 	controller        *controller.Controller
 	stopCh            chan struct{}
 	client            kubernetes.Interface
+	rpcClient         *fakeBitcoinClient
 	t                 *testing.T
 }
 
@@ -148,6 +149,13 @@ func basicSetup(client kubernetes.Interface, bcClient bitcoinversioned.Interface
 	controller.SetStsInformerSynced(alwaysReady)
 	controller.SetSvcInformerSynced(alwaysReady)
 	controller.SetPodInformerSynced(alwaysReady)
+	// Inject fake bitcoin client
+	myFakeBitcoinClient := newFakeBitcoinClient()
+	controller.SetRPCClient(myFakeBitcoinClient)
+	// Prepare bitcoin client to return an empty node list
+	myFakeBitcoinClient.nodeLists["10.0.0.1"] = []bitcoinclient.AddedNode{}
+	myFakeBitcoinClient.nodeLists["10.0.0.2"] = []bitcoinclient.AddedNode{}
+	myFakeBitcoinClient.nodeLists["10.0.0.3"] = []bitcoinclient.AddedNode{}
 	// add our network to the lister so that it can be found
 	// by the controllers recon function
 	err := bcInformer.Informer().GetIndexer().Add(myNetwork)
@@ -157,6 +165,7 @@ func basicSetup(client kubernetes.Interface, bcClient bitcoinversioned.Interface
 	return testFixture{
 		informerFactory:   informerFactory,
 		bcInformerFactory: bcInformerFactory,
+		rpcClient:         myFakeBitcoinClient,
 		controller:        controller,
 		stopCh:            make(chan struct{}),
 		client:            client,
@@ -368,13 +377,6 @@ func TestUpdateStatusUnit(t *testing.T) {
 	bcClient := fakeBitcoin.NewSimpleClientset()
 	client := fakeKubernetes.NewSimpleClientset()
 	fixture := basicSetup(client, bcClient, t)
-	// Inject fake bitcoin controller
-	myFakeBitcoinClient := newFakeBitcoinClient()
-	fixture.controller.SetRPCClient(myFakeBitcoinClient)
-	// Prepare bitcoin client to return an empty node list
-	myFakeBitcoinClient.nodeLists["10.0.0.1"] = []bitcoinclient.AddedNode{}
-	myFakeBitcoinClient.nodeLists["10.0.0.2"] = []bitcoinclient.AddedNode{}
-	myFakeBitcoinClient.nodeLists["10.0.0.3"] = []bitcoinclient.AddedNode{}
 	// add our network to the lister so that it can be found
 	// by the controllers recon function
 	myNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
@@ -437,13 +439,6 @@ func TestSteadyStateUnit(t *testing.T) {
 	bcClient := fakeBitcoin.NewSimpleClientset()
 	client := fakeKubernetes.NewSimpleClientset()
 	fixture := basicSetup(client, bcClient, t)
-	// Inject fake bitcoin controller
-	myFakeBitcoinClient := newFakeBitcoinClient()
-	fixture.controller.SetRPCClient(myFakeBitcoinClient)
-	// Prepare bitcoin client to return an empty node list
-	myFakeBitcoinClient.nodeLists["10.0.0.1"] = []bitcoinclient.AddedNode{}
-	myFakeBitcoinClient.nodeLists["10.0.0.2"] = []bitcoinclient.AddedNode{}
-	myFakeBitcoinClient.nodeLists["10.0.0.3"] = []bitcoinclient.AddedNode{}
 	myNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Could not get test network: %s\n", err)
@@ -478,13 +473,6 @@ func TestScaleUpUnit(t *testing.T) {
 	bcClient := fakeBitcoin.NewSimpleClientset()
 	client := fakeKubernetes.NewSimpleClientset()
 	fixture := basicSetup(client, bcClient, t)
-	// Inject fake bitcoin controller
-	myFakeBitcoinClient := newFakeBitcoinClient()
-	fixture.controller.SetRPCClient(myFakeBitcoinClient)
-	// Prepare bitcoin client to return an empty node list
-	myFakeBitcoinClient.nodeLists["10.0.0.1"] = []bitcoinclient.AddedNode{}
-	myFakeBitcoinClient.nodeLists["10.0.0.2"] = []bitcoinclient.AddedNode{}
-	myFakeBitcoinClient.nodeLists["10.0.0.3"] = []bitcoinclient.AddedNode{}
 	myNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Could not get test network: %s\n", err)
@@ -530,13 +518,6 @@ func TestScaleDownUnit(t *testing.T) {
 	bcClient := fakeBitcoin.NewSimpleClientset()
 	client := fakeKubernetes.NewSimpleClientset()
 	fixture := basicSetup(client, bcClient, t)
-	// Inject fake bitcoin controller
-	myFakeBitcoinClient := newFakeBitcoinClient()
-	fixture.controller.SetRPCClient(myFakeBitcoinClient)
-	// Prepare bitcoin client to return an empty node list
-	myFakeBitcoinClient.nodeLists["10.0.0.1"] = []bitcoinclient.AddedNode{}
-	myFakeBitcoinClient.nodeLists["10.0.0.2"] = []bitcoinclient.AddedNode{}
-	myFakeBitcoinClient.nodeLists["10.0.0.3"] = []bitcoinclient.AddedNode{}
 	myNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Could not get test network: %s\n", err)
@@ -581,13 +562,7 @@ func TestNodeListAddUnit(t *testing.T) {
 	bcClient := fakeBitcoin.NewSimpleClientset()
 	client := fakeKubernetes.NewSimpleClientset()
 	fixture := basicSetup(client, bcClient, t)
-	// Inject fake bitcoin controller
-	myFakeBitcoinClient := newFakeBitcoinClient()
-	fixture.controller.SetRPCClient(myFakeBitcoinClient)
-	// Prepare bitcoin client to return an empty node list
-	myFakeBitcoinClient.nodeLists["10.0.0.1"] = []bitcoinclient.AddedNode{}
-	myFakeBitcoinClient.nodeLists["10.0.0.2"] = []bitcoinclient.AddedNode{}
-	myFakeBitcoinClient.nodeLists["10.0.0.3"] = []bitcoinclient.AddedNode{}
+	myFakeBitcoinClient := fixture.rpcClient
 	myNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Could not get test network: %s\n", err)
@@ -633,9 +608,7 @@ func TestNodeListRemoveUnit(t *testing.T) {
 	bcClient := fakeBitcoin.NewSimpleClientset()
 	client := fakeKubernetes.NewSimpleClientset()
 	fixture := basicSetup(client, bcClient, t)
-	// Inject fake bitcoin controller
-	myFakeBitcoinClient := newFakeBitcoinClient()
-	fixture.controller.SetRPCClient(myFakeBitcoinClient)
+	myFakeBitcoinClient := fixture.rpcClient
 	myNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Could not get test network: %s\n", err)
@@ -714,9 +687,6 @@ func TestStatefulSetModificationUnit(t *testing.T) {
 	bcClient := fakeBitcoin.NewSimpleClientset()
 	client := fakeKubernetes.NewSimpleClientset()
 	fixture := basicSetup(client, bcClient, t)
-	// Inject fake bitcoin controller
-	myFakeBitcoinClient := newFakeBitcoinClient()
-	fixture.controller.SetRPCClient(myFakeBitcoinClient)
 	myNetwork, err := bcClient.BitcoincontrollerV1().BitcoinNetworks("test").Get("unit-test-network", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Could not get test network: %s\n", err)
