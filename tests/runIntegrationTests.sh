@@ -24,7 +24,7 @@ echo "Starting test run at $startTime"
 #
 # First spin up a bitcoin daemon locally
 #
-bitcoind=$(docker run --rm -p 18332:18332 -d christianb93/bitcoind:latest)
+bitcoind=$(docker run --rm -p 18332:18332 -d christianb93/bitcoind:v1.0)
 echo "Started dockerized bitcoin daemon $bitcoind"
 date
 #
