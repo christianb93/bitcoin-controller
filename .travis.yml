@@ -1,0 +1,9 @@
+language: go
+
+go:
+  - 1.10.8
+
+install:
+  - go get k8s.io/client-go
+script:
+  - go build ./...
