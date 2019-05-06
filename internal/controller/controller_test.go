@@ -365,8 +365,8 @@ func TestAddHandlerUnit(t *testing.T) {
 		t.Errorf("Expected one container in spec, found %d\n", len(sts.Spec.Template.Spec.Containers))
 	}
 	container := sts.Spec.Template.Spec.Containers[0]
-	if container.Image != "christianb93/bitcoind:latest" {
-		t.Errorf("Have image name %s, expected christianb93/bitcoind:latest\n", container.Image)
+	if container.Image != "christianb93/bitcoind:v1.0" {
+		t.Errorf("Have image name %s, expected christianb93/bitcoind:v1.0\n", container.Image)
 	}
 	// Verify that the environment variables are mapped into this container as defined by
 	// the secret
