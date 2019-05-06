@@ -7,7 +7,6 @@ go:
 
 install:
   - go get k8s.io/client-go/...
-  - go get -u sigs.k8s.io/kind
 script:
   - go build ./cmd/controller/
   - go test -v  ./... -run "Unit"
