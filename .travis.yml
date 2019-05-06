@@ -1,4 +1,6 @@
 language: go
+dist: xenial
+
 
 go:
   - 1.10.8
@@ -11,4 +13,4 @@ script:
   - go build ./cmd/controller/
   - go test -v  ./... -run "Unit"
   - docker run --rm -p 18332:18332 -d christianb93/bitcoind:latest
-  - kind create cluster 
+  - kind create cluster
