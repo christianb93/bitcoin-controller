@@ -6,4 +6,5 @@ go:
 install:
   - go get k8s.io/client-go/...
 script:
-  - go build ./...
+  - go build ./cmd/controller/
+  - go test -v  ./... -run "Unit"
