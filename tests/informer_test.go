@@ -1,14 +1,12 @@
 package main
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 
 	clientset "github.com/christianb93/bitcoin-controller/internal/generated/clientset/versioned"
 	bcinformers "github.com/christianb93/bitcoin-controller/internal/generated/informers/externalversions"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
 )
 
 func TestInformerCreationIntegration(t *testing.T) {
