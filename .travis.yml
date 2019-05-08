@@ -13,3 +13,5 @@ script:
   - go test -v  ./... -run "Unit"
   - docker run -d -p 18332:18332 christianb93/bitcoind:v1.0
   - kind create cluster
+  - export KUBECONFIG="$(kind get kubeconfig-path --name="kind")"
+  - kubectl cluster-info
