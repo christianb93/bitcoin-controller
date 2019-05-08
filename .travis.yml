@@ -14,7 +14,11 @@ install:
 script:
   - go build ./cmd/controller/
   - go test -v  ./... -run "Unit"
-  - docker run -d -p 18332:18332 christianb93/bitcoind:v1.0
+  - id=$(docker run -d -p 18332:18332 christianb93/bitcoind:v1.0)
   - kind create cluster
   - export KUBECONFIG="$(kind get kubeconfig-path --name="kind")"
   - kubectl cluster-info
+  - cd tests
+  - go test -v -run "Integration"
+  - docker kill $id
+  - kind delete cluster
