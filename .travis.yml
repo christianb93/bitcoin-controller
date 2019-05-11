@@ -15,4 +15,4 @@ script:
 
 deploy:
   provider: script
-  script:  bash ./travis/pushImage.sh
+  script:  bash ./travis/deploy.sh
