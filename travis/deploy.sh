@@ -13,6 +13,8 @@
 # TRAVIS_TAG                Tag if the build is caused by a git tag
 #
 
+set -e
+
 #
 # Login to Docker hub
 #
@@ -67,3 +69,6 @@ helm package .
 git add --all
 git config --global user.name christianb93
 git config --global user.email me@unknown
+git config remote.origin.url https://$GITHUB_USER:$GITHUB_PASSWORD@github.com/christianb93/bitcoin-controller-helm-qa
+git commit -m "Automated deployment of char version $chart_version"
+git push origin master
