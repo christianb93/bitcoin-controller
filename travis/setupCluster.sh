@@ -9,6 +9,7 @@ helm init --service-account tiller
 #
 status="ContainerCreating"
 while [ "$status" != "Running" ]; do
-  status=$(kubectl get pods -n kube-system |  grep "tiller" | awk '{ print $3 '})
   sleep 5
+  status=$(kubectl get pods -n kube-system |  grep "tiller" | awk '{ print $3 '})
+  echo "Current status of Tiller pod : $status"
 done

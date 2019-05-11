@@ -65,3 +65,5 @@ cp /tmp/Chart.yaml.patched Chart.yaml
 #
 helm package .
 git add --all
+git config --global user.name christianb93
+git config --global user.email me@unknown
