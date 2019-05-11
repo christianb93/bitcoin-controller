@@ -41,9 +41,11 @@ echo "$DOCKER_PASSWORD" | docker login --username $DOCKER_USER --password-stdin
 cd $TRAVIS_BUILD_DIR/cmd/controller
 CGO_ENABLED=0 go build
 docker build --rm -f $TRAVIS_BUILD_DIR/build/controller/Dockerfile -t christianb93/bitcoin-controller:$tag .
+docker tag christianb93/bitcoin-controller:$tag christianb93/bitcoin-controller:latest
 docker push christianb93/bitcoin-controller:$tag
+docker push christianb93/bitcoin-controller:latest 
 
 #
 # Return tag
 #
-echo $tag > $TRAVIS_BUILD_DIR/tag 
+echo $tag > $TRAVIS_BUILD_DIR/tag
