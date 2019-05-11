@@ -8,25 +8,10 @@ go:
 install:
   - go get k8s.io/client-go/...
   - go get -u sigs.k8s.io/kind
-  - curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.14.0/bin/linux/amd64/kubectl
-  - chmod +x ./kubectl && sudo mv ./kubectl /usr/local/bin/kubectl
 
 script:
   - go build ./cmd/controller/
   - go test -v  ./... -run "Unit"
-  - id=$(docker run -d -p 18332:18332 christianb93/bitcoind:v1.0)
-  - kind create cluster
-  - export KUBECONFIG="$(kind get kubeconfig-path --name="kind")"
-  - kubectl cluster-info
-  - kubectl apply -f deployments/crd.yaml
-  - kubectl apply -f deployments/rbac.yaml
-  - kubectl apply -f deployments/secret.yaml
-  - cd cmd/controller 
+  - cd cmd/controller
   - CGO_ENABLED=0 go build
   - docker build --rm -f ../../build/controller/Dockerfile -t christianb93/bitcoin-controller:latest .
-  - kind load docker-image christianb93/bitcoin-controller:latest
-  - kubectl run bitcoin-controller --image=christianb93/bitcoin-controller:latest --image-pull-policy=Never --restart=Never --serviceaccount='bitcoin-controller-sva' -n bitcoin-controller
-  - cd ../../tests
-  - go test -v -run "Integration"
-  - docker kill $id
-  - kind delete cluster
