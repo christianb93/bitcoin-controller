@@ -11,10 +11,8 @@ install:
 script:
   - go build ./cmd/controller/
   - go test -v  ./... -run "Unit"
-  - ./travis/buildAndPushImage.sh
+  - ./travis/buildImage.sh
 
-after_success:
-  - echo "$DOCKER_PASSWORD" | docker login --username $DOCKER_USER --password-stdin
-  - tag=$(cat ./tag)
-  - docker push christianb93/bitcoin-controller:$tag
-  - docker push christianb93/bitcoin-controller:latest
+deploy:
+  provider: script
+  script:  bash ./travis/pushImage.sh
