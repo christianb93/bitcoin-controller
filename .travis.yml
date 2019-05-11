@@ -17,5 +17,6 @@ after_success:
   - sudo snap install helm --classic
 
 deploy:
+  skip_cleanup: true
   provider: script
   script:  bash ./travis/deploy.sh
