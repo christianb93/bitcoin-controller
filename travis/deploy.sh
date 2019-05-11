@@ -46,12 +46,12 @@ cat values.yaml | sed "s/controller_image_tag.*/controller_image_tag: $tag/" > /
 cp /tmp/values.yaml.patched values.yaml
 
 #
-# Get current version from Chart file
+# Get current version from Chart file and remove build tag
 #
-current_version=$(cat Chart.yaml | grep "version" | awk '{ print $2 }')
+current_version=$(cat Chart.yaml | grep "version" | awk '{ print $2 }' | sed 's/-dev[a-z,0-9]*//')
 echo "Current chart version: $current_version"
 #
-# Update version in chart file as well
+# Update version in chart file 
 #
 if [ "X$TRAVIS_TAG" != "X" ]; then
   chart_version=$TRAVIS_TAG
@@ -63,10 +63,13 @@ cat Chart.yaml | sed "s/version.*/version: $chart_version/" > /tmp/Chart.yaml.pa
 cp /tmp/Chart.yaml.patched Chart.yaml
 
 #
-# If we have a tag build, package again and updated index file
+# If we have a tag build, package again and update index file
 #
 if [ "X$TRAVIS_TAG" != "X" ]; then
+  pwd
+  echo "Packaging"
   helm package .
+  echo "Creating index"
   helm repo index .
 fi
 
