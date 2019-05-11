@@ -63,12 +63,16 @@ cat Chart.yaml | sed "s/version.*/version: $chart_version/" > /tmp/Chart.yaml.pa
 cp /tmp/Chart.yaml.patched Chart.yaml
 
 #
-# Package again
+# If we have a tag build, package again and updated index file
 #
-helm package .
+if [ "X$TRAVIS_TAG" != "X" ]; then
+  helm package .
+  helm repo index .
+fi
+
 git add --all
 git config --global user.name christianb93
 git config --global user.email me@unknown
 git config remote.origin.url https://$GITHUB_USER:$GITHUB_PASSWORD@github.com/christianb93/bitcoin-controller-helm-qa
-git commit -m "Automated deployment of char version $chart_version"
+git commit -m "Automated deployment of chart version $chart_version"
 git push origin master
