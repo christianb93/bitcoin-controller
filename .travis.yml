@@ -13,8 +13,8 @@ script:
   - go test -v  ./... -run "Unit"
   - ./travis/buildAndPushImage.sh
 
-deploy:
+after_success:
   - echo "$DOCKER_PASSWORD" | docker login --username $DOCKER_USER --password-stdin
-    tag=$(cat ./tag)
-    docker push christianb93/bitcoin-controller:$tag
-    docker push christianb93/bitcoin-controller:latest
+  - tag=$(cat ./tag)
+  - docker push christianb93/bitcoin-controller:$tag
+  - docker push christianb93/bitcoin-controller:latest
