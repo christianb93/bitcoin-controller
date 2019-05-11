@@ -11,6 +11,6 @@ install:
 script:
   - go build ./cmd/controller/
   - go test -v  ./... -run "Unit"
-  - cd cmd/controller
-  - CGO_ENABLED=0 go build
-  - docker build --rm -f ../../build/controller/Dockerfile -t christianb93/bitcoin-controller:latest .
+  - env
+  - tag=$(./travis/buildAndPushImage.sh)
+  - echo "Pushed image christianb93/bitcoin-controller:$tag"
