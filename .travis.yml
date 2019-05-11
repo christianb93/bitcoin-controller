@@ -7,12 +7,14 @@ go:
 
 install:
   - go get k8s.io/client-go/...
-  - sudo snap install helm
 
 script:
   - go build ./cmd/controller/
   - go test -v  ./... -run "Unit"
   - ./travis/buildImage.sh
+
+after_success:
+  - sudo snap install helm --classic
 
 deploy:
   provider: script
