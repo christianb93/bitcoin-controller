@@ -11,6 +11,5 @@ install:
 script:
   - go build ./cmd/controller/
   - go test -v  ./... -run "Unit"
-  - env
-  - tag=$(./travis/buildAndPushImage.sh)
-  - echo "Pushed image christianb93/bitcoin-controller:$tag"
+  - ./travis/buildAndPushImage.sh
+  - cat ./tag

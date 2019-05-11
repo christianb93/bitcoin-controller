@@ -8,8 +8,10 @@
 # TRAVIS_TAG - if the current build is for a tag push, this should be the tag name, otherwise
 #              this is assumed to be empty
 # TRAVIS_BUILD_DIR - the absolute path name of the cloned repository
-# DCOKER_PASSWORD - the password for the Docker hub
+# DOCKER_PASSWORD - the password for the Docker hub
 # DOCKER_USER - the username for the Docker hub
+# The script will create a file  $TRAVIS_BUILD_DIR/tag which contains the tag
+# used for the push
 
 # Fail if a line fails
 set -e
@@ -44,4 +46,4 @@ docker push christianb93/bitcoin-controller:$tag
 #
 # Return tag
 #
-echo $tag
+echo $tag > $TRAVIS_BUILD_DIR/tag 
