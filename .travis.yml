@@ -15,6 +15,7 @@ script:
 
 after_success:
   - sudo snap install helm --classic
+  - helm init --client-only
 
 deploy:
   skip_cleanup: true
