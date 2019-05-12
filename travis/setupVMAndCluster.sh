@@ -56,6 +56,8 @@ go get k8s.io/client-go/...
 #
 tag=$(cat Chart.yaml | grep "appVersion:" | awk {' print $2 '})
 echo "Using tag $tag"
-cd $TRAVIS_HOME
+cd ..
+echo "Working directory is now $(pwd)"
 git clone https://github.com/christianb93/bitcoin-controller
+cd bitcoin-controller
 git checkout $tag
