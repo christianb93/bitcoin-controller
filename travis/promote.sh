@@ -38,3 +38,13 @@ cp $TRAVIS_BUILD_DIR/*.tgz .
 ls -l
 helm repo index .
 cat index.yaml
+
+#
+# Now push this change back
+#
+git add --all
+git config --global user.name christianb93
+git config --global user.email me@unknown
+git config remote.origin.url https://$GITHUB_USER:$GITHUB_PASSWORD@github.com/christianb93/bitcoin-controller-helm
+git commit -m "Automated deployment of packaged chart version $chart_version"
+git push origin master

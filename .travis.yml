@@ -1,6 +1,8 @@
 language: go
 dist: xenial
 
+env:
+  - GO111MODULE=off
 
 go:
   - 1.10.8
