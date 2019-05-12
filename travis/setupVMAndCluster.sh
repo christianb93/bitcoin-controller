@@ -1,9 +1,11 @@
+#!/bin/bash
 #
 # Prepare a virtual machine for the integration tests. We will install the needed software and then
 # bring up a cluster using kind
 #
 # We expect that the following environment variables are set:
-# TRAVIS_HOME      - home directory of the travis user
+# TRAVIS_HOME         - home directory of the travis user
+# TRAVIS_BUILD_DIR    - directory into which Travis clones the bitcoin-controller-helm-qa repo
 
 set -e
 

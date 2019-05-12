@@ -11,7 +11,6 @@
 # DOCKER_PASSWORD           Password
 # TRAVIS_BUILD_DIR          Travis build directory
 # TRAVIS_TAG                Tag if the build is caused by a git tag
-#
 
 set -e
 
