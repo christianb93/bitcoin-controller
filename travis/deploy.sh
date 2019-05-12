@@ -51,7 +51,7 @@ cp /tmp/values.yaml.patched values.yaml
 current_version=$(cat Chart.yaml | grep "version" | awk '{ print $2 }' | sed 's/-dev[a-z,0-9]*//')
 echo "Current chart version: $current_version"
 #
-# Update version in chart file 
+# Update chart version and appVersion  in chart file
 #
 if [ "X$TRAVIS_TAG" != "X" ]; then
   chart_version=$TRAVIS_TAG
@@ -59,19 +59,9 @@ else
   chart_version="$current_version-dev$tag"
 fi
 echo "Using chart version $chart_version"
-cat Chart.yaml | sed "s/version.*/version: $chart_version/" > /tmp/Chart.yaml.patched
+cat Chart.yaml | sed "s/version.*/version: $chart_version/"  | sed "s/appVersion.*/appVersion: $tag/" > /tmp/Chart.yaml.patched
 cp /tmp/Chart.yaml.patched Chart.yaml
 
-#
-# If we have a tag build, package again and update index file
-#
-if [ "X$TRAVIS_TAG" != "X" ]; then
-  pwd
-  echo "Packaging"
-  helm package .
-  echo "Creating index"
-  helm repo index .
-fi
 
 git add --all
 git config --global user.name christianb93
