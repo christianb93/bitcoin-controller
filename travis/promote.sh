@@ -28,6 +28,13 @@ fi
 #
 echo "This looks like a stable version - packaging"
 helm package .
+#
+# Now get the current repository
+#
+cd ..
+git clone https://github.com/christianb93/bitcoin-controller-helm
+cd bitcoin-controller-helm
+cp $TRAVIS_BUILD_DIR/*.tgz .
+ls -l
 helm repo index .
 cat index.yaml
-ls
