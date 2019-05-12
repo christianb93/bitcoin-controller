@@ -2,6 +2,8 @@
 # Prepare a virtual machine for the integration tests. We will install the needed software and then
 # bring up a cluster using kind
 #
+# We expect that the following environment variables are set:
+# TRAVIS_HOME      - home directory of the travis user
 
 set -e
 
@@ -41,3 +43,19 @@ while [ "$status" != "Running" ]; do
   status=$(kubectl get pods -n kube-system |  grep "tiller" | awk '{ print $3 '})
   echo "Current status of Tiller pod : $status"
 done
+
+#
+# Install go client library. We need this as we need to build our integration tests
+#
+go get k8s.io/client-go/...
+
+#
+# Fetch the source code of the controller. For that to work, we need to make sure
+# that we have the version of the integration tests from the commit that triggered
+# this build. Therefore we need to get this from the Chart.yaml file first
+#
+tag=$(cat Chart.yaml | grep "appVersion:" | awk {' print $2 '})
+echo "Using tag $tag"
+cd $TRAVIS_HOME
+git clone https://github.com/christianb93/bitcoin-controller
+git checkout $tag
