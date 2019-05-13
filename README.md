@@ -35,7 +35,7 @@ To be able to access the bitcoin daemon running on the individual nodes, credent
 kubectl apply -f https://raw.githubusercontent.com/christianb93/bitcoin-controller/master/deployments/secret.yaml
 ``
 
-Finally, let us start the controller.
+We are now ready to start our controller.
 
 ``
 kubectl apply -f https://raw.githubusercontent.com/christianb93/bitcoin-controller/master/deployments/controller.yaml
