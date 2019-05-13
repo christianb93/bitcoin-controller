@@ -29,6 +29,8 @@ mkdir -p $TRAVIS_HOME/cache
 # Install kind. We first check whether it exists in the cache, if
 # not we download it and add it to the cache
 #
+echo "Installing kind"
+date
 if [ -f "$TRAVIS_HOME/cache/kind-linux-amd64" ]; then
   echo "Retrieving kind binary from cache"
   cp $TRAVIS_HOME/cache/kind-linux-amd64 .
@@ -39,13 +41,15 @@ else
 fi
 chmod +x kind-linux-amd64 && sudo mv kind-linux-amd64 /usr/local/bin/kind
 
-
 #
 # Create cluster and install helm
 #
+echo "Bringing up test cluster"
 date
 kind create cluster
 export KUBECONFIG=$(kind get kubeconfig-path --name="kind")
+echo "Installing helm in test cluster"
+date
 kubectl create serviceaccount tiller -n kube-system
 kubectl create clusterrolebinding tiller --clusterrole=cluster-admin  --serviceaccount=kube-system:tiller
 helm init --service-account tiller
@@ -53,13 +57,16 @@ helm init --service-account tiller
 #
 # Wait for tiller container to come up
 #
+echo "Waiting for Tiller pod to come up"
+date
+sleep 5
 status="ContainerCreating"
 while [ "$status" != "Running" ]; do
   status=$(kubectl get pods -n kube-system |  grep "tiller" | awk '{ print $3 '})
   echo "Current status of Tiller pod : $status"
   sleep 5
 done
-date
+
 
 #
 # Fetch the source code of the controller. For that to work, we need to make sure
@@ -67,13 +74,17 @@ date
 # this build. Therefore we need to get this from the Chart.yaml file first
 #
 tag=$(cat Chart.yaml | grep "appVersion:" | awk {' print $2 '})
-echo "Using tag $tag"
+echo "Fetching source code, using tag $tag"
+date
 cd $GOPATH/src/github.com/christianb93
 git clone https://github.com/christianb93/bitcoin-controller
 cd bitcoin-controller
 git checkout $tag
+date
 
 #
 # Install go client library. We need this as we need to build our integration tests
 #
+echo "Running go get"
 go get -d -t ./...
+date
