@@ -4,6 +4,10 @@ dist: xenial
 env:
   - GO111MODULE=off
 
+cache:
+  directories:
+    - $TRAVIS_HOME/.cache
+
 go:
   - 1.10.8
 
@@ -12,12 +16,8 @@ install:
 
 script:
   - go build ./cmd/controller/
-  - go test -v  ./... -run "Unit"
+  - go test -v  ./... -run "Unit" -count=1
   - ./travis/buildImage.sh
-
-after_success:
-  - sudo snap install helm --classic
-  - helm init --client-only
 
 deploy:
   skip_cleanup: true
