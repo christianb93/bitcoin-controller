@@ -41,6 +41,12 @@ pwd
 cat Chart.yaml | sed "s/bitcoin-controller-helm-qa/bitcoin-controller/" > /tmp/Chart.yaml.patched
 cp /tmp/Chart.yaml.patched Chart.yaml
 cat Chart.yaml
+# Before we package, we remove a few files that we no longer need and that should not end up in the archive
+rm -rf setupVMAndCluster.sh
+rm -rf afterBuild.sh
+rm -rf .travis.yml
+rm -rf .git
+# Ask helm to create a package
 helm package .
 
 #
