@@ -16,7 +16,7 @@ if [ -f "$TRAVIS_HOME/cache/kind_node_image.tar" ]; then
   echo "There is already a version of the kind node image in the cache, not replacing"
 else
   echo "Unloading kindest/node to cache"
-  docker save --output $TRAVIS_HOME/cache/kind_node_image.tar kindest/node"
+  docker save --output $TRAVIS_HOME/cache/kind_node_image.tar kindest/node
 fi
 
 #
