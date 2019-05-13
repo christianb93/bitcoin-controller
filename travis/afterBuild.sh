@@ -10,9 +10,15 @@
 #
 kind delete cluster
 # Save docker image if there is no cached instance yet
-if [ -f "$TRAVIS_HOME/cache/kind_node_image.tar" ]; then
-  echo "There is already a version of the kind node image in the cache, not replacing"
-else
-  echo "Unloading kindest/node to cache"
-  docker save --output $TRAVIS_HOME/cache/kind_node_image.tar kindest/node
-fi
+# We skip this if CACHE_DOCKER_IMAGES is not on
+if [ "X$CACHE_DOCKER_IMAGES" == "Xon" ]; then
+  if [ -f "$TRAVIS_HOME/cache/kind_node_image.tar" ]; then
+    echo "There is already a version of the kind node image in the cache, not replacing"
+  else
+    echo "Unloading kindest/node to cache"
+    docker save --output $TRAVIS_HOME/cache/kind_node_image.tar kindest/node
+  fi
+else 
+  echo "Set CACHE_DOCKER_IMAGES to on to enable caching of kind node image"
+fi 
+
