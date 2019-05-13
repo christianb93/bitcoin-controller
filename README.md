@@ -66,3 +66,12 @@ When you inspect the bitcoin network that we have created using, you will also s
 ``
 kubectl describe bitcoinnetwork my-network
 ``
+
+## Install using Helm
+
+To install the controller into a running cluster using Helm, simply run the following commands (assuming that you have Helm installed in the cluster).
+
+```
+helm repo add bitcoin-controller-repo https://raw.githubusercontent.com/christianb93/bitcoin-controller-helm/master
+helm install bitcoin-controller-repo/bitcoin-controller
+```
