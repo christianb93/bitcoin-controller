@@ -110,6 +110,6 @@ if [ -f "$TRAVIS_HOME/cache/kind_node_image.tar" ]; then
   docker load --input $TRAVIS_HOME/cache/kind_node_image.tar
 else
   echo "Unloading kindest/node to cache"
-  docker save --output $TRAVIS_HOME/cache/kind_node_image.tar kindest/node"
+  docker save --output $TRAVIS_HOME/cache/kind_node_image.tar kindest/node
 fi
-
+date
