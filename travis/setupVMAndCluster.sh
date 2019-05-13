@@ -42,6 +42,16 @@ fi
 chmod +x kind-linux-amd64 && sudo mv kind-linux-amd64 /usr/local/bin/kind
 
 #
+# If there is an image for kind in the cache directory, load it
+#
+if [ -f "$TRAVIS_HOME/cache/kind_node_image.tar" ]; then
+  echo "Retrieving kind node image from cache"
+  docker load --input $TRAVIS_HOME/cache/kind_node_image.tar
+else
+  echo "No cached version of kind node image found"
+fi
+
+#
 # Create cluster and install helm
 #
 echo "Bringing up test cluster"
@@ -88,3 +98,18 @@ date
 echo "Running go get"
 go get -d -t ./...
 date
+
+#
+# Save kind node image for later use
+#
+#
+# If there is an image for kind in the cache directory, load it
+#
+if [ -f "$TRAVIS_HOME/cache/kind_node_image.tar" ]; then
+  echo "There is already a version of the kind node image in the cache, not replacing"
+  docker load --input $TRAVIS_HOME/cache/kind_node_image.tar
+else
+  echo "Unloading kindest/node to cache"
+  docker save --output $TRAVIS_HOME/cache/kind_node_image.tar kindest/node"
+fi
+
