@@ -43,6 +43,7 @@ chmod +x kind-linux-amd64 && sudo mv kind-linux-amd64 /usr/local/bin/kind
 #
 # Create cluster and install helm
 #
+date
 kind create cluster
 export KUBECONFIG=$(kind get kubeconfig-path --name="kind")
 kubectl create serviceaccount tiller -n kube-system
@@ -58,7 +59,7 @@ while [ "$status" != "Running" ]; do
   echo "Current status of Tiller pod : $status"
   sleep 5
 done
-
+date
 
 #
 # Fetch the source code of the controller. For that to work, we need to make sure
