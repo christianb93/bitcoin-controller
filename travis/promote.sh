@@ -24,17 +24,32 @@ if [ "$stripped_chart_version" != "$chart_version" ]; then
 fi
 
 #
-# If we get to this point, this is a stable version
+# If we get to this point, this is a stable version. Let us package this.
+# To make sure that the final package has the correct name, we need to
+# rename the build directory first
 #
 echo "This looks like a stable version - packaging"
+cd ..
+ls
+rm -rf bitcoin-controller
+mv bitcoin-controller-helm-qa bitcoin-controller
+cd bitcoin-controller
+pwd
+cat Chart.yaml | sed "s/bitcoin-controller-helm-qa/bitcoin-controller/" > /tmp/Chart.yaml.patched
+cp /tmp/Chart.yaml.patched Chart.yaml
+cat Chart.yaml
 helm package .
+
 #
-# Now get the current repository
+# Now get the current repository, copy the generated tar file there
+# and rebuild the index. Be careful, $TRAVIS_BUILD_DIR now points
+# into the old repo dir that we just renamed, and the tar file
+# is in ../bitcoin-controller 
 #
 cd ..
 git clone https://github.com/christianb93/bitcoin-controller-helm
 cd bitcoin-controller-helm
-cp $TRAVIS_BUILD_DIR/*.tgz .
+cp ../bitcoin-controller/*.tgz .
 ls -l
 helm repo index .
 cat index.yaml
