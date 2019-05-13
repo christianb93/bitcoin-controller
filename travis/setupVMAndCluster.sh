@@ -41,15 +41,11 @@ helm init --service-account tiller
 #
 status="ContainerCreating"
 while [ "$status" != "Running" ]; do
-  sleep 5
   status=$(kubectl get pods -n kube-system |  grep "tiller" | awk '{ print $3 '})
   echo "Current status of Tiller pod : $status"
+  sleep 5
 done
 
-#
-# Install go client library. We need this as we need to build our integration tests
-#
-go get k8s.io/client-go/...
 
 #
 # Fetch the source code of the controller. For that to work, we need to make sure
@@ -62,3 +58,8 @@ cd $GOPATH/src/github.com/christianb93
 git clone https://github.com/christianb93/bitcoin-controller
 cd bitcoin-controller
 git checkout $tag
+
+#
+# Install go client library. We need this as we need to build our integration tests
+#
+go get -d -t ./...
