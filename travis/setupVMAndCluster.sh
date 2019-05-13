@@ -21,9 +21,22 @@ curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.14.0/bin/l
 chmod +x ./kubectl && sudo mv ./kubectl /usr/local/bin/kubectl
 
 #
-# Install kind
+# Create cache directory if it does not exist yet
 #
-wget https://github.com/kubernetes-sigs/kind/releases/download/0.2.1/kind-linux-amd64
+mkdir -p $TRAVIS_HOME/cache
+
+#
+# Install kind. We first check whether it exists in the cache, if
+# not we download it and add it to the cache
+#
+if [ -f "$TRAVIS_HOME/cache/kind-linux-amd64" ]; then
+  echo "Retrieving kind binary from cache"
+  cp $TRAVIS_HOME/cache/kind-linux-amd64 .
+else
+  echo "Need to get kind binary from Github"
+  wget https://github.com/kubernetes-sigs/kind/releases/download/0.2.1/kind-linux-amd64
+  cp kind-linux-amd64 $TRAVIS_HOME/cache/kind-linux-amd64
+fi
 chmod +x kind-linux-amd64 && sudo mv kind-linux-amd64 /usr/local/bin/kind
 
 
