@@ -98,18 +98,3 @@ date
 echo "Running go get"
 go get -d -t ./...
 date
-
-#
-# Save kind node image for later use
-#
-#
-# If there is an image for kind in the cache directory, load it
-#
-if [ -f "$TRAVIS_HOME/cache/kind_node_image.tar" ]; then
-  echo "There is already a version of the kind node image in the cache, not replacing"
-  docker load --input $TRAVIS_HOME/cache/kind_node_image.tar
-else
-  echo "Unloading kindest/node to cache"
-  docker save --output $TRAVIS_HOME/cache/kind_node_image.tar kindest/node
-fi
-date
