@@ -17,6 +17,7 @@ set -e
 #
 # Login to Docker hub
 #
+echo "Using password $DOCKER_PASSWORD"
 echo "$DOCKER_PASSWORD" | docker login --username $DOCKER_USER --password-stdin
 
 #
