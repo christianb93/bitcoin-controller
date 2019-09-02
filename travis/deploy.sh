@@ -17,8 +17,10 @@ set -e
 #
 # Login to Docker hub
 #
-echo "Using password $DOCKER_PASSWORD"
+
 echo "$DOCKER_PASSWORD" | docker login --username $DOCKER_USER --password-stdin
+# Not a good idea, as it makes our password visible in the build log - just for testing purposes
+cat /home/travis/.docker/config.json
 
 #
 # Get tag
