@@ -15,7 +15,7 @@ install:
   - go get -d -t ./...
 
 script:
-  - echo "Using password $DOCKER_PASSWORD"
+  - pwd
   - go build ./cmd/controller/
   - go test -v  ./... -run "Unit" -count=1
   - ./travis/buildImage.sh
