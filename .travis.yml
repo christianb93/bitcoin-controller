@@ -15,7 +15,7 @@ install:
   - go get -d -t ./...
 
 script:
-  - cd $GOPATH/src/k8s.io/klog && git checkout v0.4.0
+  - (cd $GOPATH/src/k8s.io/klog && git checkout v0.4.0)
   - go build ./cmd/controller/
   - go test -v  ./... -run "Unit" -count=1
   - ./travis/buildImage.sh
