@@ -97,4 +97,6 @@ date
 #
 echo "Running go get"
 go get -d -t ./...
+# Make sure that we have version 0.4.0 of klog - this is a workaround for a broken client-go build with later versions
+(cd $GOPATH/src/k8s.io/klog && git checkout v0.4.0)
 date
