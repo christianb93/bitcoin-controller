@@ -42,7 +42,7 @@ cd bitcoin-controller-helm-qa
 #
 # Replace image version in values.yaml by new tag
 #
-cat values.yaml | sed "s/controller_image_tag.*/controller_image_tag: $tag/" > /tmp/values.yaml.patched
+cat values.yaml | sed "s/controller_image_tag.*/controller_image_tag: \"$tag\"/" > /tmp/values.yaml.patched
 cp /tmp/values.yaml.patched values.yaml
 
 #

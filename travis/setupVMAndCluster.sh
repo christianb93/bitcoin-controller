@@ -17,7 +17,7 @@ sudo snap install helm --classic
 #
 # Install kubectl
 #
-curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.14.0/bin/linux/amd64/kubectl
+curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.17.0/bin/linux/amd64/kubectl
 chmod +x ./kubectl && sudo mv ./kubectl /usr/local/bin/kubectl
 
 #
@@ -36,7 +36,7 @@ if [ -f "$TRAVIS_HOME/cache/kind-linux-amd64" ]; then
   cp $TRAVIS_HOME/cache/kind-linux-amd64 .
 else
   echo "Need to get kind binary from Github"
-  wget https://github.com/kubernetes-sigs/kind/releases/download/0.2.1/kind-linux-amd64
+  wget https://github.com/kubernetes-sigs/kind/releases/download/0.7.0/kind-linux-amd64
   cp kind-linux-amd64 $TRAVIS_HOME/cache/kind-linux-amd64
 fi
 chmod +x kind-linux-amd64 && sudo mv kind-linux-amd64 /usr/local/bin/kind
@@ -52,30 +52,11 @@ else
 fi
 
 #
-# Create cluster and install helm
+# Create cluster and install
 #
 echo "Bringing up test cluster"
 date
 kind create cluster
-export KUBECONFIG=$(kind get kubeconfig-path --name="kind")
-echo "Installing helm in test cluster"
-date
-kubectl create serviceaccount tiller -n kube-system
-kubectl create clusterrolebinding tiller --clusterrole=cluster-admin  --serviceaccount=kube-system:tiller
-helm init --service-account tiller
-
-#
-# Wait for tiller container to come up
-#
-echo "Waiting for Tiller pod to come up"
-date
-sleep 5
-status="ContainerCreating"
-while [ "$status" != "Running" ]; do
-  status=$(kubectl get pods -n kube-system |  grep "tiller" | awk '{ print $3 '})
-  echo "Current status of Tiller pod : $status"
-  sleep 5
-done
 
 
 #
@@ -97,6 +78,4 @@ date
 #
 echo "Running go get"
 go get -d -t ./...
-# Make sure that we have version 0.4.0 of klog - this is a workaround for a broken client-go build with later versions
-(cd $GOPATH/src/k8s.io/klog && git checkout v0.4.0)
 date
