@@ -2,20 +2,19 @@ language: go
 dist: xenial
 
 env:
-  - GO111MODULE=off
+  - GO111MODULE=on
 
 cache:
   directories:
     - $TRAVIS_HOME/.cache
 
 go:
-  - 1.10.8
+  - 1.13.6
 
 install:
   - go get -d -t ./...
 
 script:
-  - (cd $GOPATH/src/k8s.io/klog && git checkout v0.4.0)
   - go build ./cmd/controller/
   - go test -v  ./... -run "Unit" -count=1
   - ./travis/buildImage.sh
