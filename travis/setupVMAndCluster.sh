@@ -36,7 +36,7 @@ if [ -f "$TRAVIS_HOME/cache/kind-linux-amd64" ]; then
   cp $TRAVIS_HOME/cache/kind-linux-amd64 .
 else
   echo "Need to get kind binary from Github"
-  wget https://github.com/kubernetes-sigs/kind/releases/download/0.7.0/kind-linux-amd64
+  wget https://github.com/kubernetes-sigs/kind/releases/download/v0.7.0/kind-linux-amd64
   cp kind-linux-amd64 $TRAVIS_HOME/cache/kind-linux-amd64
 fi
 chmod +x kind-linux-amd64 && sudo mv kind-linux-amd64 /usr/local/bin/kind
