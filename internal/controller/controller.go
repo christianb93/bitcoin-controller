@@ -491,7 +491,7 @@ func (c *Controller) doRecon(key string) bool {
 	// headless service and the stateful set
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
-		klog.Errorf("Could not split key %s into name and namespace\n")
+		klog.Errorf("Could not split key %s into name and namespace\n", key)
 		return false
 	}
 	svcName := name + svcPostfix
@@ -514,7 +514,7 @@ func (c *Controller) doRecon(key string) bool {
 			// The service does not yet seem to exist, create it
 			c.createHeadlessService(bcNetwork, svcName)
 		} else {
-			klog.Infof("Could not get headless service, error %s\n", err, err)
+			klog.Infof("Could not get headless service, error %s\n", err)
 			return true
 		}
 	}
@@ -524,7 +524,7 @@ func (c *Controller) doRecon(key string) bool {
 		if errors.IsNotFound(err) {
 			sts = c.createStatefulSet(bcNetwork, stsName, svcName)
 		} else {
-			klog.Infof("Could not get stateful set, error %s\n", err, err)
+			klog.Infof("Could not get stateful set, error %s\n", err)
 			return true
 		}
 	}
